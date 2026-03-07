@@ -6,6 +6,9 @@ A comprehensive, modular Python tool for automated **data cleaning**, **explorat
 > A massive, 100-page equivalent Technical Thesis & Systems Architecture Blueprint covering the extreme mathematics, algorithms, UI Rendering, and Zettabyte Cloud Scaling limits of this project has been compiled. 
 > Please read [documention.md](./documention.md) for the ultimate deep-dive into DataClean1/DataPipe.
 
+> 🧭 **USER GUIDE**
+> Practical setup and usage instructions are available in [USER_GUIDE.md](./USER_GUIDE.md).
+
 ## 🚀 Quick Start
 
 ```python

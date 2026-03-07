@@ -93,7 +93,7 @@ class DocumentIngestor:
         }
 
     def ingest(
-        self, sources: Union[str, List[str]], recursive: bool = False
+        self, sources: Union[str, List[str]], recursive: bool = False, max_pages: int = 1
     ) -> List[Dict[str, Any]]:
         """
         Ingest one or more sources into unified document format.
@@ -105,6 +105,8 @@ class DocumentIngestor:
         recursive : bool
             If True and source is a directory, recursively ingest all
             supported files.
+        max_pages : int
+            Maximum number of pages to scrape for e-commerce URLs (pagination).
 
         Returns
         -------
@@ -120,7 +122,7 @@ class DocumentIngestor:
 
         for source in sources:
             try:
-                docs = self._ingest_single(source, recursive)
+                docs = self._ingest_single(source, recursive, max_pages)
                 self.documents.extend(docs)
                 self._stats["successful"] += 1
                 source_type = docs[0]["source_type"] if docs else "unknown"
@@ -135,14 +137,14 @@ class DocumentIngestor:
         return self.documents
 
     def _ingest_single(
-        self, source: str, recursive: bool = False
+        self, source: str, recursive: bool = False, max_pages: int = 1
     ) -> List[Dict[str, Any]]:
         """Route a single source to the appropriate parser."""
         # URL detection
         if source.startswith(("http://", "https://")):
             # Check if it's an e-commerce product URL
             if HAS_ECOMMERCE and is_ecommerce_url(source):
-                return self._ingest_ecommerce(source)
+                return self._ingest_ecommerce(source, max_pages)
             return self._ingest_url(source)
 
         path = Path(source)
@@ -304,7 +306,7 @@ class DocumentIngestor:
 
     # ─── E-Commerce Ingestion ────────────────────────────────────────────
 
-    def _ingest_ecommerce(self, url: str) -> List[Dict[str, Any]]:
+    def _ingest_ecommerce(self, url: str, max_pages: int = 1) -> List[Dict[str, Any]]:
         """Scrape structured product data from e-commerce URLs."""
         if not HAS_ECOMMERCE:
             raise ImportError(
@@ -312,8 +314,15 @@ class DocumentIngestor:
                 "Falling back to generic URL ingestion."
             )
 
-        scraper = EcommerceScraper(timeout=self.timeout, max_retries=2)
-        docs = scraper.scrape_to_documents(url)
+        scraper = EcommerceScraper(
+            timeout=self.timeout, max_retries=2, max_pages=max_pages
+        )
+
+        # Route search/listing pages through paginated listing scraper.
+        if scraper._find_listing_extractor(url):
+            docs = scraper.scrape_listings_to_documents(url, max_pages=max_pages)
+        else:
+            docs = scraper.scrape_to_documents(url)
 
         if not docs:
             # Fallback to generic URL scraping

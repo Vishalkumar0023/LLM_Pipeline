@@ -539,14 +539,14 @@
             <a href="/demo" class="nav-link">🚀 Demo</a>
             <a href="/llm" class="nav-link">🧠 LLM Pipeline</a>
             <a href="/files" class="nav-link">📂 Files</a>
-            <a href="{{ url_for('dashboard') }}" class="nav-link">📊 Dashboard</a>
+            <a href="{{ url_for('ml.dashboard') }}" class="nav-link">📊 Dashboard</a>
         </div>
     </nav>
 
     <div class="main-content">
         <div class="page-header">
             <div class="breadcrumb">
-                <a href="{{ url_for('dashboard') }}">Dashboard</a> / {{ dataset.name }}
+                <a href="{{ url_for('ml.dashboard') }}">Dashboard</a> / {{ dataset.name }}
             </div>
             <h1 class="page-title">{{ dataset.name }}</h1>
             <div class="page-meta">
@@ -555,13 +555,13 @@
                 <span class="badge">{{ dataset.problem_type or 'N/A' }}</span>
             </div>
             <div class="btn-group">
-                <a href="{{ url_for('download_dataset', dataset_id=dataset.id, file_type='cleaned') }}" class="btn">📥
+                <a href="{{ url_for('ml.download_dataset', dataset_id=dataset.id, file_type='cleaned') }}" class="btn">📥
                     Cleaned (CSV)</a>
-                <a href="{{ url_for('download_dataset', dataset_id=dataset.id, file_type='cleaned', format='xlsx') }}"
+                <a href="{{ url_for('ml.download_dataset', dataset_id=dataset.id, file_type='cleaned', format='xlsx') }}"
                     class="btn">📊 Cleaned (Excel)</a>
-                <a href="{{ url_for('download_dataset', dataset_id=dataset.id, file_type='final') }}"
+                <a href="{{ url_for('ml.download_dataset', dataset_id=dataset.id, file_type='final') }}"
                     class="btn btn-success">⬇️ Model-Ready (CSV)</a>
-                <a href="{{ url_for('download_dataset', dataset_id=dataset.id, file_type='final', format='xlsx') }}"
+                <a href="{{ url_for('ml.download_dataset', dataset_id=dataset.id, file_type='final', format='xlsx') }}"
                     class="btn btn-success">📊 Model-Ready (Excel)</a>
                 <button class="btn btn-primary" id="train-btn" onclick="trainModel()">🧠 Train
                     Model</button>
@@ -815,7 +815,7 @@
         <div class="card-header" style="display:flex; justify-content:space-between; align-items:center;">
             <h2>🔎 Row-Level Transformations</h2>
             {% if row_changes_csv %}
-            <a href="{{ url_for('download_changes', filename=row_changes_csv) }}" class="btn btn-sm btn-outline"
+            <a href="{{ url_for('ml.download_changes', filename=row_changes_csv) }}" class="btn btn-sm btn-outline"
                 style="gap:0.5rem;">
                 <i class="fas fa-download"></i> Download CSV
             </a>

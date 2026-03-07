@@ -82,13 +82,25 @@ def llm_ingest():
     except:
         pass
 
+    try:
+        max_pages = int(request.form.get("max_pages", 1))
+    except ValueError:
+        max_pages = 1
+
     if not sources:
         return jsonify({"error": "No files or URLs provided"}), 400
 
     try:
         ingestor = DocumentIngestor()
-        docs = ingestor.ingest(sources)
+        docs = ingestor.ingest(sources, max_pages=max_pages)
         stats = ingestor.get_stats()
+
+        if not docs:
+            # Provide exact reasons why ingestion failed
+            error_details = [f"{err['source']}: {err['error']}" for err in ingestor.errors]
+            error_msg = "Failed to extract documents. " + " | ".join(error_details)
+            print(f"DEBUG INGEST: {error_msg}")
+            return jsonify({"error": error_msg}), 400
 
         sessions = load_llm_sessions(g.current_user.id)
         sessions[session_id] = {
@@ -135,21 +147,75 @@ def llm_process():
     docs = session["documents"]
 
     try:
-        chunker = TextChunker(
-            method=data.get("chunk_method", "sliding_window"),
-            chunk_size=data.get("chunk_size", 512),
-            overlap=64,
-        )
-        chunks = chunker.chunk_documents(docs)
+        use_llm = data.get("use_llm", False)
+        llm_provider = data.get("llm_provider", "openai")
+        llm_api_key = data.get("llm_api_key", "")
+        llm_model = data.get("llm_model", "gpt-4o-mini")
 
-        formatter = InstructFormatter(template=data.get("template", "alpaca"))
-        pairs = formatter.format_chunks(
-            chunks,
-            domain=data.get("domain", "general"),
-            generate_qa=True,
-            pairs_per_chunk=2,
-        )
+        if use_llm:
+            # Stage 3.5: LLM-Based Generation
+            from data_pipeline.llm_client import LLMClient
+            from data_pipeline.llm_data_processor import LLMDataProcessor
+            
+            # Combine documents for LLM processing
+            client = LLMClient(provider=llm_provider, api_key=llm_api_key)
+            processor = LLMDataProcessor(client=client, model=llm_model)
+            
+            # We don't chunk strictly for LLM, instead we pass the raw text to let it compress
+            # We will still store a chunk format so the UI and rest of pipeline don't break
+            chunks = []
+            pairs = []
+            
+            for i, doc in enumerate(docs):
+                text = doc.get("text", "")
+                if not text:
+                    continue
+                    
+                source = doc.get("source") or doc.get("metadata", {}).get("source", "unknown")
 
+                chunks.append({
+                    "text": text,
+                    "source": source,
+                    "doc_id": doc.get("doc_id", "unknown"),
+                    "chunk_index": i
+                })
+                
+                # LLM Processing
+                valid_pairs = processor.process_raw_text(text)
+                for pair in valid_pairs:
+                    pair["metadata"] = {
+                        "source": source,
+                        "doc_id": doc.get("doc_id", "unknown"),
+                        "generated_by": f"{llm_provider}/{llm_model}"
+                    }
+                    pairs.append(pair)
+            
+            # Format according to requested template
+            formatter = InstructFormatter(template=data.get("template", "alpaca"))
+            formatted_pairs = []
+            for p in pairs:
+                # Format pair via formatter to ensure it fits output structure
+                formatted_pairs.append(formatter._apply_template(p))
+            pairs = formatted_pairs
+
+        else:
+            # Standard Rule-based Pipeline
+            chunker = TextChunker(
+                method=data.get("chunk_method", "sliding_window"),
+                chunk_size=data.get("chunk_size", 512),
+                overlap=64,
+            )
+            chunks = chunker.chunk_documents(docs)
+
+            formatter = InstructFormatter(template=data.get("template", "alpaca"))
+            pairs = formatter.format_chunks(
+                chunks,
+                domain=data.get("domain", "general"),
+                generate_qa=True,
+                pairs_per_chunk=2,
+            )
+
+        # Stage 4: Quality Scoring (Applied to both pipelines)
         min_quality = data.get("min_quality", 0.4)
         scorer = QualityScorer(min_quality_score=min_quality)
         scored = scorer.score(pairs)
@@ -157,6 +223,9 @@ def llm_process():
 
         scores = [p.get("quality", {}).get("overall_score", 0) for p in filtered]
         avg_quality = sum(scores) / len(scores) if scores else 0
+        
+        print(f"DEBUG PROCESS: Generation pipeline created {len(pairs)} raw pairs.")
+        print(f"DEBUG PROCESS: QualityScorer filtered them down to {len(filtered)} valid pairs using min_quality={min_quality}.")
 
         session["chunks"] = chunks
         session["pairs"] = pairs
@@ -210,8 +279,14 @@ def llm_export():
 
     filtered = session.get("filtered_pairs", [])
     if not filtered:
+        # Check if pairs exists to distinguish between "not processed" and "all filtered out"
+        if "pairs" in session and len(session["pairs"]) > 0:
+            print(f"DEBUG EXPORT: 400 Error. filtered_pairs is empty, but session['pairs'] has {len(session['pairs'])} items. User needs to lower Min Quality Score.")
+            return jsonify({"error": f"0 pairs passed the quality filter (out of {len(session['pairs'])}). Lower the Min Quality Score to 0.0 and process again."}), 400
+        print("DEBUG EXPORT: 400 Error. No processed data. session['pairs'] is empty or missing.")
         return jsonify({"error": "No processed data. Run process first."}), 400
 
+    print(f"DEBUG EXPORT: Success! Exporting {len(filtered)} filtered pairs.")
     try:
         user_folder = get_user_folder(g.current_user.id)
         export_dir = os.path.join(user_folder, "llm_exports", session_id)

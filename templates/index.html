@@ -848,12 +848,12 @@
         <div class="nav-center">
             <a href="#features" class="nav-link">Features</a>
             <a href="#how-it-works" class="nav-link">How It Works</a>
-            <a href="{{ url_for('demo_page') }}" class="nav-link">Demo</a>
-            <a href="{{ url_for('llm_page') }}" class="nav-link">LLM Pipeline</a>
+            <a href="{{ url_for('ml.demo_page') }}" class="nav-link">Demo</a>
+            <a href="{{ url_for('llm.llm_page') }}" class="nav-link">LLM Pipeline</a>
         </div>
         <div class="nav-right">
-            <a href="{{ url_for('login') }}" class="nav-link">Sign In</a>
-            <a href="{{ url_for('signup') }}" class="btn-nav-signup">Get Started</a>
+            <a href="{{ url_for('auth.login') }}" class="nav-link">Sign In</a>
+            <a href="{{ url_for('auth.signup') }}" class="btn-nav-signup">Get Started</a>
         </div>
     </nav>
 
@@ -872,7 +872,7 @@
             — all in one secure platform.
         </p>
         <div class="hero-actions">
-            <a href="{{ url_for('signup') }}" class="btn-primary">Start Building Smarter</a>
+            <a href="{{ url_for('auth.signup') }}" class="btn-primary">Start Building Smarter</a>
             <a href="#features" class="btn-secondary">Explore The Platform</a>
         </div>
         <div class="social-proof">
@@ -1008,8 +1008,8 @@
                 <h2>Ready to Build Smarter?</h2>
                 <p>Create a free account and start processing datasets or preparing LLM training data in minutes.</p>
                 <div class="hero-actions" style="position: relative; z-index: 2;">
-                    <a href="{{ url_for('signup') }}" class="btn-primary">🚀 Create Free Account</a>
-                    <a href="{{ url_for('login') }}" class="btn-secondary">Sign In →</a>
+                    <a href="{{ url_for('auth.signup') }}" class="btn-primary">🚀 Create Free Account</a>
+                    <a href="{{ url_for('auth.login') }}" class="btn-secondary">Sign In →</a>
                 </div>
             </div>
         </div>
@@ -1030,8 +1030,8 @@
                             <h4>Product</h4>
                             <a href="#features">Features</a>
                             <a href="#how-it-works">How It Works</a>
-                            <a href="{{ url_for('llm_page') }}">LLM Pipeline</a>
-                            <a href="{{ url_for('signup') }}">Get Started</a>
+                            <a href="{{ url_for('llm.llm_page') }}">LLM Pipeline</a>
+                            <a href="{{ url_for('auth.signup') }}">Get Started</a>
                         </div>
                         <div class="footer-col">
                             <h4>Tech Stack</h4>

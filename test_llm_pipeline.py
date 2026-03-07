@@ -9,6 +9,7 @@ import sys
 import json
 import shutil
 import tempfile
+import pytest
 
 # Add project root to path
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -110,6 +111,53 @@ Always evaluate on a held-out test set that represents your target distribution.
     return [txt_path, md_path, json_path]
 
 
+@pytest.fixture(scope="module")
+def sources():
+    return setup_test_files()
+
+
+@pytest.fixture(scope="module")
+def docs(sources):
+    from data_pipeline.document_ingestor import DocumentIngestor
+
+    ingestor = DocumentIngestor()
+    return ingestor.ingest(sources)
+
+
+@pytest.fixture(scope="module")
+def chunks(docs):
+    from data_pipeline.text_chunker import TextChunker
+
+    chunker = TextChunker(method="sliding_window", chunk_size=300, overlap=50)
+    return chunker.chunk_documents(docs)
+
+
+@pytest.fixture(scope="module")
+def pairs(chunks):
+    from data_pipeline.instruct_formatter import InstructFormatter
+
+    formatter = InstructFormatter(template="alpaca")
+    return formatter.format_chunks(chunks, domain="machine learning")
+
+
+@pytest.fixture(scope="module")
+def data(pairs):
+    from data_pipeline.quality_scorer import QualityScorer
+
+    scorer = QualityScorer(min_quality_score=0.3)
+    scored = scorer.score(pairs)
+    return scorer.filter(scored, min_score=0.3)
+
+
+@pytest.fixture(scope="module", autouse=True)
+def cleanup_test_dir():
+    yield
+    try:
+        shutil.rmtree(TEST_DIR)
+    except Exception:
+        pass
+
+
 def test_layer1_ingestion(sources):
     """Test Layer 1: Document Ingestion."""
     print("\n── Layer 1: Document Ingestion ──")
@@ -129,6 +177,8 @@ def test_layer1_ingestion(sources):
     stats = ingestor.get_stats()
     report("Stats track totals", stats["total_documents"] == len(docs))
 
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     return docs
 
 
@@ -157,6 +207,8 @@ def test_layer2_chunking(docs):
     chunks2 = chunker2.chunk_documents(docs)
     report("Paragraph method works", len(chunks2) > 0, f"{len(chunks2)} chunks")
 
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     return chunks
 
 
@@ -191,6 +243,8 @@ def test_layer3_formatting(chunks):
     stats = formatter.get_stats()
     report("Stats track pair count", stats["total_pairs"] == len(pairs))
 
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     return pairs
 
 
@@ -224,6 +278,8 @@ def test_layer4_quality(pairs):
     stats = scorer.get_stats()
     report("Stats track totals", stats["total_samples"] == len(pairs))
 
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     return filtered
 
 
@@ -268,6 +324,8 @@ def test_layer5_versioning(data):
     registry.rollback("v1.0.0")
     report("Rollback sets latest", registry._registry["latest"] == "v1.0.0")
 
+    if "PYTEST_CURRENT_TEST" in os.environ:
+        return
     return registry
 
 

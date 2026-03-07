@@ -35,6 +35,7 @@ env/
 .pytest_cache/
 .coverage
 htmlcov/
+.ruff_cache/
 
 # Environment variables
 .env
@@ -50,6 +51,7 @@ user_data/
 # Output & generated files
 output/
 llm_output/
+llm_datasets/
 dataset_registry/
 llm_logs/
 demo_models/
@@ -68,4 +70,7 @@ demo_models/
 
 # Database
 *.db
+*.db-*
+*.sqlite
+*.sqlite-*
 *.sqlite3

@@ -7,6 +7,7 @@ Converts structured product data into LLM pipeline documents.
 """
 
 import re
+import random
 import hashlib
 import time
 from abc import ABC, abstractmethod
@@ -52,6 +53,7 @@ class ProductData:
         url: str = "",
         platform: str = "",
         metadata: Optional[Dict[str, Any]] = None,
+        reviews: Optional[List[str]] = None,
     ):
         self.title = title
         self.price = price
@@ -70,6 +72,7 @@ class ProductData:
         self.url = url
         self.platform = platform
         self.metadata = metadata or {}
+        self.reviews = reviews or []
 
     def to_dict(self) -> Dict[str, Any]:
         """Convert to dictionary."""
@@ -125,6 +128,13 @@ class ProductData:
             parts.append("\nKey Features:")
             for feat in self.features:
                 parts.append(f"  • {feat}")
+        if self.reviews:
+            parts.append("\nCustomer Reviews:")
+            for i, rev in enumerate(self.reviews):
+                # Clean up multiple spaces and newlines
+                clean_rev = re.sub(r'\s+', ' ', rev).strip()
+                if clean_rev:
+                    parts.append(f"  [{i+1}] {clean_rev}")
 
         return "\n".join(parts)
 
@@ -150,11 +160,12 @@ class BaseExtractor(ABC):
     }
 
     def __init__(
-        self, use_playwright: bool = False, timeout: int = 30, headless: bool = True
+        self, use_playwright: bool = False, timeout: int = 30, headless: bool = True, max_pages: int = 1
     ):
         self.use_playwright = use_playwright and HAS_PLAYWRIGHT
         self.timeout = timeout
         self.headless = headless
+        self.max_pages = max_pages
 
     def fetch_page(self, url: str) -> BeautifulSoup:
         """Fetch and parse a page, with JS rendering if configured."""
@@ -166,7 +177,7 @@ class BaseExtractor(ABC):
         """Fetch page using requests (static HTML only)."""
         response = requests.get(url, headers=self.HEADERS, timeout=self.timeout)
         response.raise_for_status()
-        return BeautifulSoup(response.text, "html.parser")
+        return BeautifulSoup(response.text, "lxml")
 
     def _fetch_with_playwright(self, url: str) -> BeautifulSoup:
         """Fetch page using Playwright (renders JavaScript)."""
@@ -183,7 +194,7 @@ class BaseExtractor(ABC):
             page.wait_for_load_state("networkidle")
             content = page.content()
             browser.close()
-        return BeautifulSoup(content, "html.parser")
+        return BeautifulSoup(content, "lxml")
 
     @abstractmethod
     def extract_product(self, url: str) -> ProductData:
@@ -455,6 +466,35 @@ class AmazonExtractor(BaseExtractor):
         )
         category = " > ".join(category_parts) if category_parts else ""
 
+        # Collect reviews with pagination
+        reviews = self._select_all_text(soup, [".review-text-content span", "div[data-hook='review-collapsed'] span"])
+        all_reviews_link = soup.select_one("a[data-hook='see-all-reviews-link-foot']")
+        
+        if all_reviews_link and self.max_pages > 1:
+            next_url = all_reviews_link.get("href")
+            if next_url:
+                parsed = urlparse(url)
+                if next_url.startswith("/"):
+                    next_url = f"{parsed.scheme}://{parsed.netloc}{next_url}"
+                pages_fetched = 1
+                while next_url and pages_fetched < self.max_pages:
+                    try:
+                        time.sleep(1.0)
+                        rev_soup = self.fetch_page(next_url)
+                        page_reviews = self._select_all_text(rev_soup, [".review-text-content span", "div[data-hook='review'] span[data-hook='review-body']"])
+                        if page_reviews:
+                            reviews.extend(page_reviews)
+                        
+                        next_page_tag = rev_soup.select_one("li.a-last a")
+                        if next_page_tag and next_page_tag.get("href"):
+                            next_route = next_page_tag.get("href")
+                            next_url = f"{parsed.scheme}://{parsed.netloc}{next_route}" if next_route.startswith("/") else next_route
+                        else:
+                            next_url = None
+                        pages_fetched += 1
+                    except Exception:
+                        break
+
         return ProductData(
             title=title,
             price=price,
@@ -472,6 +512,7 @@ class AmazonExtractor(BaseExtractor):
             brand=brand,
             url=url,
             platform="amazon",
+            reviews=reviews,
         )
 
 
@@ -637,6 +678,40 @@ class FlipkartExtractor(BaseExtractor):
         )
         category = " > ".join(category_parts) if category_parts else ""
 
+        # Collect reviews with pagination
+        reviews = self._select_all_text(soup, ["div.ZmyDvd", "div.t-ZTKy div div"])
+        all_reviews_parent = soup.select_one("div._3UAT2v")
+        
+        if all_reviews_parent and all_reviews_parent.parent and all_reviews_parent.parent.name == "a" and self.max_pages > 1:
+            next_url = all_reviews_parent.parent.get("href")
+            if next_url:
+                parsed = urlparse(url)
+                if next_url.startswith("/"):
+                    next_url = f"{parsed.scheme}://{parsed.netloc}{next_url}"
+                pages_fetched = 1
+                while next_url and pages_fetched < self.max_pages:
+                    try:
+                        time.sleep(1.0)
+                        rev_soup = self.fetch_page(next_url)
+                        page_reviews = self._select_all_text(rev_soup, ["div.ZmyDvd", "div.t-ZTKy div div"])
+                        if page_reviews:
+                            reviews.extend(page_reviews)
+                        
+                        next_page_tag = None
+                        for a in rev_soup.select("nav a"):
+                            if "NEXT" in a.get_text(strip=True).upper():
+                                next_page_tag = a
+                                break
+                        
+                        if next_page_tag and next_page_tag.get("href"):
+                            next_route = next_page_tag.get("href")
+                            next_url = f"{parsed.scheme}://{parsed.netloc}{next_route}" if next_route.startswith("/") else next_route
+                        else:
+                            next_url = None
+                        pages_fetched += 1
+                    except Exception:
+                        break
+
         return ProductData(
             title=title,
             price=price,
@@ -654,10 +729,788 @@ class FlipkartExtractor(BaseExtractor):
             brand=brand,
             url=url,
             platform="flipkart",
+            reviews=reviews,
         )
 
 
+
+# ─── Meesho Extractor ───────────────────────────────────────────────────
+
+class MeeshoExtractor(BaseExtractor):
+    """Product extractor for Meesho."""
+
+    DOMAINS = ["meesho.com", "www.meesho.com"]
+
+    def is_product_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.hostname in self.DOMAINS and "/p/" in parsed.path
+
+    def extract_product(self, url: str) -> ProductData:
+        soup = self.fetch_page(url)
+
+        title = self._select_text(soup, ["span.Text__StyledText-sc-oo0kvp-0.fqolwF", "h1", ".ProductDescription__Brand-sc-"])
+        price_text = self._select_text(soup, ["h4.Text__StyledText-sc-oo0kvp-0", ".ProductPrice__Price-sc-"])
+        price = self._parse_price(price_text)
+        
+        rating_text = self._select_text(soup, [".Rating__StyledRating-sc-", "span.Rating__StyledRating-sc-"])
+        rating = self._parse_rating(rating_text)
+        
+        description = self._select_text(soup, [".ProductDescription__Description-sc-", "div.FreeShippingAndReturn__Container-sc-"])
+        
+        image_urls = []
+        for img in soup.select("img"):
+            src = img.get("src", "")
+            if src and src.startswith("http") and ("images" in src or "product" in src):
+                image_urls.append(src)
+
+        return ProductData(
+            title=title, price=price, currency="INR", rating=rating,
+            description=description, image_urls=image_urls[:5], url=url, platform="meesho"
+        )
+
+# ─── Myntra Extractor ───────────────────────────────────────────────────
+
+class MyntraExtractor(BaseExtractor):
+    """Product extractor for Myntra."""
+
+    DOMAINS = ["myntra.com", "www.myntra.com"]
+
+    def is_product_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.hostname in self.DOMAINS
+
+    def extract_product(self, url: str) -> ProductData:
+        soup = self.fetch_page(url)
+
+        title = self._select_text(soup, ["h1.pdp-name", "h1.pdp-title"])
+        brand = self._select_text(soup, ["h1.pdp-title"])  # Myntra puts brand in title
+        price_text = self._select_text(soup, ["span.pdp-price", ".pdp-price strong"])
+        price = self._parse_price(price_text)
+        
+        original_price_text = self._select_text(soup, ["span.pdp-mrp s"])
+        original_price = self._parse_price(original_price_text)
+
+        rating_text = self._select_text(soup, ["div.index-overallRating div"])
+        rating = self._parse_rating(rating_text)
+        
+        description = self._select_text(soup, [".pdp-productDescriptorsContainer", ".pdp-product-description-content"])
+        
+        image_urls = []
+        for div in soup.select(".image-grid-image"):
+            style = div.get("style", "")
+            match = re.search(r'url\("([^"]+)"\)', style)
+            if match:
+                image_urls.append(match.group(1))
+
+        return ProductData(
+            title=title, brand=brand, price=price, original_price=original_price, 
+            currency="INR", rating=rating, description=description, 
+            image_urls=image_urls[:5], url=url, platform="myntra"
+        )
+
+# ─── Ajio Extractor ─────────────────────────────────────────────────────
+
+class AjioExtractor(BaseExtractor):
+    """Product extractor for Ajio."""
+
+    DOMAINS = ["ajio.com", "www.ajio.com"]
+
+    def is_product_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.hostname in self.DOMAINS and "/p/" in parsed.path
+
+    def extract_product(self, url: str) -> ProductData:
+        soup = self.fetch_page(url)
+
+        title = self._select_text(soup, ["h1.prod-name"])
+        brand = self._select_text(soup, ["h2.brand-name"])
+        price_text = self._select_text(soup, ["div.prod-price"])
+        price = self._parse_price(price_text)
+        
+        discount = self._select_text(soup, [".discount-perc"])
+        description = self._select_text(soup, [".prod-desc"])
+
+        image_urls = []
+        for img in soup.select(".prod-image img"):
+            src = img.get("src", "")
+            if src and src.startswith("http"):
+                image_urls.append(src)
+
+        return ProductData(
+            title=title, brand=brand, price=price, discount=discount,
+            currency="INR", description=description, 
+            image_urls=image_urls[:5], url=url, platform="ajio"
+        )
+
+# ─── eBay Extractor ─────────────────────────────────────────────────────
+
+class EbayExtractor(BaseExtractor):
+    """Product extractor for eBay."""
+
+    DOMAINS = ["ebay.com", "www.ebay.com", "ebay.co.uk", "ebay.in"]
+
+    def is_product_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return any(d in parsed.hostname for d in self.DOMAINS) and "/itm/" in parsed.path
+
+    def extract_product(self, url: str) -> ProductData:
+        soup = self.fetch_page(url)
+
+        title = self._select_text(soup, ["h1.x-item-title__mainTitle span", "h1.x-item-title__mainTitle"])
+        price_text = self._select_text(soup, ["div.x-price-primary span", "div.x-price-primary"])
+        price = self._parse_price(price_text)
+        
+        seller = self._select_text(soup, [".x-sellercard-atf__info__about-seller a span"])
+        condition = self._select_text(soup, [".x-item-condition-text .ux-textspans"])
+
+        features = self._select_all_text(soup, [".ux-labels-values__labels", ".ux-labels-values__values"])
+
+        image_urls = []
+        for img in soup.select(".ux-image-carousel-item img"):
+            src = img.get("src", "") or img.get("data-src", "")
+            if src and src.startswith("http"):
+                src = re.sub(r's-l\d+\.', 's-l1600.', src)
+                image_urls.append(src)
+
+        # Build feature list nicely
+        cleaned_features = []
+        for i in range(0, len(features)-1, 2):
+             cleaned_features.append(f"{features[i]}: {features[i+1]}")
+
+        return ProductData(
+            title=title, price=price, currency="USD", seller=seller,
+            description=f"Condition: {condition}", features=cleaned_features,
+            image_urls=image_urls[:5], url=url, platform="ebay"
+        )
+
+
+# ─── Listing Page Extractors (Pagination) ────────────────────────────────
+
+
+class BaseListingExtractor(ABC):
+    """
+    Abstract base class for paginated search/listing page extractors.
+    Scrapes product cards from search results across multiple pages.
+    """
+
+    # Rotate User-Agents to reduce blocking risk
+    USER_AGENTS = [
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.2 Safari/605.1.15",
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+    ]
+
+    def __init__(
+        self,
+        use_playwright: bool = False,
+        timeout: int = 30,
+        headless: bool = True,
+        max_pages: int = 10,
+        min_delay: float = 1.0,
+        max_delay: float = 3.0,
+    ):
+        self.use_playwright = use_playwright and HAS_PLAYWRIGHT
+        self.timeout = timeout
+        self.headless = headless
+        self.max_pages = max_pages
+        self.min_delay = min_delay
+        self.max_delay = max_delay
+        # Updated on each extract_listing() call.
+        self.last_pages_scraped = 0
+
+    def _get_headers(self) -> Dict[str, str]:
+        """Return headers with a randomly selected User-Agent."""
+        return {
+            "User-Agent": random.choice(self.USER_AGENTS),
+            "Accept-Language": "en-US,en;q=0.9",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Referer": "https://www.google.com/",
+        }
+
+    def _human_delay(self):
+        """Sleep a random duration to mimic human browsing."""
+        delay = random.uniform(self.min_delay, self.max_delay)
+        time.sleep(delay)
+
+    def fetch_page(self, url: str) -> BeautifulSoup:
+        """Fetch and parse a page with anti-blocking measures."""
+        if self.use_playwright:
+            return self._fetch_with_playwright(url)
+        return self._fetch_with_requests(url)
+
+    def _fetch_with_requests(self, url: str) -> BeautifulSoup:
+        """Fetch page using requests with rotated headers."""
+        response = requests.get(
+            url, headers=self._get_headers(), timeout=self.timeout
+        )
+        response.raise_for_status()
+        return BeautifulSoup(response.text, "lxml")
+
+    def _fetch_with_playwright(self, url: str) -> BeautifulSoup:
+        """Fetch page using Playwright (JS rendering)."""
+        if not HAS_PLAYWRIGHT:
+            raise ImportError(
+                "Playwright is required for JS rendering. "
+                "Install: pip install playwright && playwright install chromium"
+            )
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=self.headless)
+            context = browser.new_context(
+                user_agent=random.choice(self.USER_AGENTS),
+                viewport={"width": 1920, "height": 1080},
+            )
+            page = context.new_page()
+            page.goto(url, timeout=self.timeout * 1000)
+            page.wait_for_load_state("networkidle")
+            # Scroll down to trigger lazy loading
+            page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            time.sleep(1)
+            content = page.content()
+            browser.close()
+        return BeautifulSoup(content, "lxml")
+
+    @abstractmethod
+    def is_listing_url(self, url: str) -> bool:
+        """Check if a URL is a search/listing page for this site."""
+        pass
+
+    @abstractmethod
+    def _extract_product_cards(self, soup: BeautifulSoup, page_url: str) -> List[ProductData]:
+        """Extract product cards from a single listing page."""
+        pass
+
+    @abstractmethod
+    def _detect_next_page(self, soup: BeautifulSoup, current_url: str) -> Optional[str]:
+        """Detect the URL of the next page, or None if no more pages."""
+        pass
+
+    def extract_listing(
+        self, url: str, max_pages: Optional[int] = None
+    ) -> List[ProductData]:
+        """
+        Paginate through a search/listing page and extract all product cards.
+
+        Parameters
+        ----------
+        url : str
+            Starting search/listing URL.
+        max_pages : int, optional
+            Override for max pages to scrape.
+
+        Returns
+        -------
+        list of ProductData
+            All products found across pages.
+        """
+        limit = max_pages or self.max_pages
+        all_products: List[ProductData] = []
+        current_url = url
+        pages_scraped = 0
+        visited_urls = set()
+
+        print(f"  🔍 Starting listing scrape: {url[:80]}...")
+
+        while current_url and pages_scraped < limit:
+            if current_url in visited_urls:
+                print("     ⏹ Pagination loop detected; stopping.")
+                break
+            visited_urls.add(current_url)
+            pages_scraped += 1
+            print(f"  📄 Page {pages_scraped}/{limit}: {current_url[:80]}...")
+
+            try:
+                soup = self.fetch_page(current_url)
+                products = self._extract_product_cards(soup, current_url)
+
+                # Tag each product with page number
+                for product in products:
+                    product.metadata = product.metadata or {}
+                    product.metadata["page_number"] = pages_scraped
+                    product.metadata["listing_url"] = url
+
+                all_products.extend(products)
+                print(f"     ✅ Extracted {len(products)} products (total: {len(all_products)})")
+
+                # Check for next page
+                next_url = self._detect_next_page(soup, current_url)
+                if not next_url or next_url == current_url:
+                    print(f"     ⏹ No more pages found.")
+                    break
+                if next_url in visited_urls:
+                    print("     ⏹ Next page already visited; stopping.")
+                    break
+
+                current_url = next_url
+
+                # Anti-blocking delay between pages
+                if pages_scraped < limit:
+                    self._human_delay()
+
+            except Exception as e:
+                print(f"     ❌ Error on page {pages_scraped}: {e}")
+                break
+
+        self.last_pages_scraped = pages_scraped
+        print(f"  🏁 Listing scrape complete: {len(all_products)} products from {pages_scraped} pages")
+        return all_products
+
+    # ─── Shared Helpers ──────────────────────────────────────────────
+
+    @staticmethod
+    def _clean_html_text(text: str) -> str:
+        """Strip HTML tags, extra spaces, and newlines from text."""
+        if not text:
+            return ""
+        # Remove HTML tags
+        cleaned = re.sub(r"<[^>]+>", "", text)
+        # Collapse whitespace
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        return cleaned
+
+    @staticmethod
+    def _normalize_price(text: str) -> Optional[float]:
+        """
+        Convert price text to float. Handles:
+        - '₹1,299.00' → 1299.0
+        - '$29.99' → 29.99
+        - '₹1.5k' → 1500.0
+        - '₹12,000' → 12000.0
+        """
+        if not text:
+            return None
+        text = text.strip()
+
+        # Handle k/K suffix (e.g., ₹1.5k → 1500)
+        k_match = re.search(r"([\d,]+\.?\d*)\s*[kK]", text)
+        if k_match:
+            try:
+                return float(k_match.group(1).replace(",", "")) * 1000
+            except ValueError:
+                pass
+
+        # Handle L/lakh suffix
+        l_match = re.search(r"([\d,]+\.?\d*)\s*(?:L|lakh)", text, re.IGNORECASE)
+        if l_match:
+            try:
+                return float(l_match.group(1).replace(",", "")) * 100000
+            except ValueError:
+                pass
+
+        # Standard price parsing
+        price_match = re.search(r"[\d,]+\.?\d*", text.replace(",", ""))
+        if price_match:
+            try:
+                # Re-parse from original to handle commas properly
+                nums = re.findall(r"[\d,]+\.?\d*", text)
+                if nums:
+                    return float(nums[0].replace(",", ""))
+            except ValueError:
+                pass
+        return None
+
+    @staticmethod
+    def _select_text(
+        soup: BeautifulSoup, selectors: List[str], default: str = ""
+    ) -> str:
+        """Try multiple CSS selectors, return first match's text."""
+        for selector in selectors:
+            try:
+                el = soup.select_one(selector)
+                if el:
+                    text = el.get_text(strip=True)
+                    if text:
+                        return text
+            except Exception:
+                continue
+        return default
+
+    @staticmethod
+    def _select_attr(
+        soup: BeautifulSoup, selectors: List[str], attr: str, default: str = ""
+    ) -> str:
+        """Try multiple CSS selectors, return first match's attribute."""
+        for selector in selectors:
+            try:
+                el = soup.select_one(selector)
+                if el and el.get(attr):
+                    return el.get(attr, default)
+            except Exception:
+                continue
+        return default
+
+    @staticmethod
+    def _parse_rating(text: str) -> Optional[float]:
+        """Parse rating from text like '4.3 out of 5' or '4.3'."""
+        if not text:
+            return None
+        match = re.search(r"(\d+\.?\d*)", text)
+        if match:
+            val = float(match.group(1))
+            if 0 <= val <= 5:
+                return val
+        return None
+
+    @staticmethod
+    def _parse_count(text: str) -> Optional[int]:
+        """Parse count from text like '12,345 ratings'."""
+        if not text:
+            return None
+        nums = re.findall(r"[\d,]+", text)
+        if nums:
+            try:
+                return int(nums[0].replace(",", ""))
+            except ValueError:
+                return None
+        return None
+
+
+class AmazonListingExtractor(BaseListingExtractor):
+    """
+    Extract product cards from Amazon search result pages.
+    Handles pagination via 'Next' button.
+    """
+
+    DOMAINS = ["amazon.in", "amazon.com", "www.amazon.in", "www.amazon.com"]
+
+    def is_listing_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return (
+            parsed.hostname in self.DOMAINS
+            and ("/s?" in url or "/s/" in parsed.path or "/s?" in url)
+        )
+
+    def _extract_product_cards(self, soup: BeautifulSoup, page_url: str) -> List[ProductData]:
+        """Extract product cards from Amazon search results."""
+        products = []
+        parsed = urlparse(page_url)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+        currency = "INR" if "amazon.in" in page_url else "USD"
+
+        # Main product card selectors
+        cards = soup.select('div[data-component-type="s-search-result"]')
+        if not cards:
+            cards = soup.select("div.s-result-item[data-asin]")
+        if not cards:
+            cards = soup.select("div.sg-col-inner .s-result-item")
+
+        for card in cards:
+            try:
+                asin = card.get("data-asin", "")
+                if not asin:
+                    continue
+
+                # Title
+                title = self._select_text(
+                    card,
+                    [
+                        "h2 a span",
+                        "h2 span.a-text-normal",
+                        ".a-size-medium.a-text-normal",
+                        ".a-size-base-plus.a-text-normal",
+                    ],
+                )
+                if not title:
+                    continue  # Skip ads / empty cards
+
+                # Price
+                price_text = self._select_text(
+                    card,
+                    [
+                        "span.a-price span.a-offscreen",
+                        "span.a-price-whole",
+                        ".a-price .a-offscreen",
+                    ],
+                )
+                price = self._normalize_price(price_text)
+
+                # Original price (strikethrough)
+                orig_text = self._select_text(
+                    card,
+                    [
+                        'span.a-price[data-a-strike="true"] span.a-offscreen',
+                        "span.a-text-price span.a-offscreen",
+                    ],
+                )
+                original_price = self._normalize_price(orig_text)
+
+                # Rating
+                rating_text = self._select_text(
+                    card,
+                    [
+                        "span.a-icon-alt",
+                        "i.a-icon-star-small span.a-icon-alt",
+                    ],
+                )
+                rating = self._parse_rating(rating_text)
+
+                # Reviews count
+                reviews_text = self._select_text(
+                    card,
+                    [
+                        "span.a-size-base.s-underline-text",
+                        "a.s-underline-text span",
+                    ],
+                )
+                reviews_count = self._parse_count(reviews_text)
+
+                # Product URL
+                product_link = self._select_attr(
+                    card, ["h2 a", "a.a-link-normal.s-no-outline"], "href"
+                )
+                product_url = ""
+                if product_link:
+                    if product_link.startswith("/"):
+                        product_url = f"{domain}{product_link}"
+                    elif product_link.startswith("http"):
+                        product_url = product_link
+
+                # Image
+                image_url = self._select_attr(
+                    card, ["img.s-image", ".s-image"], "src"
+                )
+
+                # Availability / delivery
+                availability = self._select_text(
+                    card,
+                    [
+                        "span.a-color-base.a-text-bold",
+                        ".a-row.a-size-base .a-text-bold",
+                    ],
+                )
+                if not availability:
+                    availability = "Available"
+
+                # Discount
+                discount = ""
+                if price and original_price and original_price > price:
+                    pct = round((1 - price / original_price) * 100)
+                    discount = f"{pct}% off"
+
+                product = ProductData(
+                    title=self._clean_html_text(title),
+                    price=price,
+                    original_price=original_price,
+                    discount=discount,
+                    currency=currency,
+                    rating=rating,
+                    reviews_count=reviews_count,
+                    availability=self._clean_html_text(availability),
+                    url=product_url,
+                    platform="amazon",
+                    image_urls=[image_url] if image_url else [],
+                    metadata={"asin": asin, "source_page": page_url},
+                )
+                if product.is_valid():
+                    products.append(product)
+
+            except Exception:
+                continue
+
+        return products
+
+    def _detect_next_page(self, soup: BeautifulSoup, current_url: str) -> Optional[str]:
+        """Find the Next button URL on Amazon search results."""
+        parsed = urlparse(current_url)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+
+        # Try multiple selectors for the Next button
+        for selector in [
+            "a.s-pagination-next",
+            "li.a-last a",
+            'ul.a-pagination li.a-last a',
+        ]:
+            el = soup.select_one(selector)
+            if el and el.get("href"):
+                href = el["href"]
+                if href.startswith("/"):
+                    return f"{domain}{href}"
+                elif href.startswith("http"):
+                    return href
+        return None
+
+
+class FlipkartListingExtractor(BaseListingExtractor):
+    """
+    Extract product cards from Flipkart search result pages.
+    Handles pagination via 'Next' button.
+    """
+
+    DOMAINS = ["flipkart.com", "www.flipkart.com"]
+
+    def is_listing_url(self, url: str) -> bool:
+        parsed = urlparse(url)
+        return parsed.hostname in self.DOMAINS and (
+            "/search?q=" in url or "/q/" in parsed.path
+        )
+
+    def _extract_product_cards(self, soup: BeautifulSoup, page_url: str) -> List[ProductData]:
+        """Extract product cards from Flipkart search results."""
+        products = []
+        parsed = urlparse(page_url)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+
+        # Flipkart product card selectors (they change class names frequently)
+        cards = soup.select("div._1AtVbE")
+        if not cards:
+            cards = soup.select("div._2kHMtA")
+        if not cards:
+            cards = soup.select("div._4ddWXP")
+        if not cards:
+            # Fallback: look for product links with images
+            cards = soup.select("div[data-id]")
+
+        for card in cards:
+            try:
+                # Title
+                title = self._select_text(
+                    card,
+                    [
+                        "div._4rR01T",
+                        "a.s1Q9rs",
+                        "a.IRpwTa",
+                        "div.KzDlHZ",
+                        "a.wjcEIp",
+                    ],
+                )
+                if not title or len(title) < 5:
+                    continue
+
+                # Price
+                price_text = self._select_text(
+                    card,
+                    [
+                        "div._30jeq3._1_WHN1",
+                        "div._30jeq3",
+                        "div.Nx9bqj",
+                    ],
+                )
+                price = self._normalize_price(price_text)
+
+                # Original price
+                orig_text = self._select_text(
+                    card,
+                    [
+                        "div._3I9_wc._27UcVY",
+                        "div._3I9_wc",
+                        "div.yRaY8j",
+                    ],
+                )
+                original_price = self._normalize_price(orig_text)
+
+                # Discount
+                discount = self._select_text(
+                    card,
+                    [
+                        "div._3Ay6Sb._31Dcoz",
+                        "div.UkUFwK",
+                    ],
+                )
+
+                # Rating
+                rating_text = self._select_text(
+                    card,
+                    [
+                        "div._3LWZlK",
+                        "div.XQDdHH",
+                    ],
+                )
+                rating = self._parse_rating(rating_text)
+
+                # Reviews / ratings count
+                reviews_text = self._select_text(
+                    card,
+                    [
+                        "span._2_R_DZ",
+                        "span.Wphh3N",
+                    ],
+                )
+                reviews_count = self._parse_count(reviews_text)
+
+                # Product URL
+                product_link = self._select_attr(
+                    card, ["a._1fQZEK", "a.s1Q9rs", "a.IRpwTa", "a._2rpwqI", "a.CGtC98"], "href"
+                )
+                product_url = ""
+                if product_link:
+                    if product_link.startswith("/"):
+                        product_url = f"{domain}{product_link}"
+                    elif product_link.startswith("http"):
+                        product_url = product_link
+
+                # Image URL
+                image_url = self._select_attr(
+                    card, ["img._396cs4", "img._2r_T1I", "img"], "src"
+                )
+                # Convert thumbnail to full size
+                if image_url:
+                    image_url = re.sub(r"/\d+/\d+/", "/800/800/", image_url)
+
+                # Description snippet
+                desc_parts = []
+                for sel in ["li.rgWa7D", "ul.G4BRas li", "div._1xgFaf"]:
+                    items = card.select(sel)
+                    for item in items[:5]:
+                        t = item.get_text(strip=True)
+                        if t:
+                            desc_parts.append(t)
+
+                product = ProductData(
+                    title=self._clean_html_text(title),
+                    price=price,
+                    original_price=original_price,
+                    discount=self._clean_html_text(discount),
+                    currency="INR",
+                    rating=rating,
+                    reviews_count=reviews_count,
+                    description="\n".join(desc_parts),
+                    url=product_url,
+                    platform="flipkart",
+                    image_urls=[image_url] if image_url else [],
+                    metadata={"source_page": page_url},
+                )
+                if product.is_valid():
+                    products.append(product)
+
+            except Exception:
+                continue
+
+        return products
+
+    def _detect_next_page(self, soup: BeautifulSoup, current_url: str) -> Optional[str]:
+        """Find the Next button URL on Flipkart search results."""
+        parsed = urlparse(current_url)
+        domain = f"{parsed.scheme}://{parsed.netloc}"
+
+        for selector in ["a._1LKTO3", "nav a[href]:last-child", "a._9QVEpD"]:
+            el = soup.select_one(selector)
+            if el:
+                text = el.get_text(strip=True).upper()
+                href = el.get("href", "")
+                if "NEXT" in text and href:
+                    if href.startswith("/"):
+                        return f"{domain}{href}"
+                    elif href.startswith("http"):
+                        return href
+
+        # Fallback: look for page number links and find current + 1
+        page_links = soup.select("nav a[href]")
+        for link in page_links:
+            text = link.get_text(strip=True)
+            if text.isdigit():
+                # Check if this is the next sequential page
+                href = link.get("href", "")
+                if href and "page=" in href:
+                    if href.startswith("/"):
+                        return f"{domain}{href}"
+                    elif href.startswith("http"):
+                        return href
+        return None
+
+
 # ─── Scraper Orchestrator ───────────────────────────────────────────────
+
 
 
 class EcommerceScraper:
@@ -683,6 +1536,7 @@ class EcommerceScraper:
         delay: float = 1.0,
         max_retries: int = 2,
         headless: bool = True,
+        max_pages: int = 10,
     ):
         """
         Initialize the scraper.
@@ -699,18 +1553,36 @@ class EcommerceScraper:
             Number of retries on failure.
         headless: bool
             Whether to run the browser in headless mode.
+        max_pages: int
+            Maximum number of pages to scrape (e.g., for reviews).
         """
         self.delay = delay
         self.max_retries = max_retries
         self.headless = headless
+        self.max_pages = max_pages
 
-        # Initialize extractors
+        self.use_playwright = use_playwright
+        self.timeout = timeout
+
+        # Initialize product page extractors
         self._extractors: List[BaseExtractor] = [
-            AmazonExtractor(
-                use_playwright=use_playwright, timeout=timeout, headless=self.headless
+            AmazonExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+            FlipkartExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+            MeeshoExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+            MyntraExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+            AjioExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+            EbayExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+        ]
+
+        # Initialize listing/search page extractors
+        self._listing_extractors: List[BaseListingExtractor] = [
+            AmazonListingExtractor(
+                use_playwright=use_playwright, timeout=timeout,
+                headless=self.headless, max_pages=self.max_pages,
             ),
-            FlipkartExtractor(
-                use_playwright=use_playwright, timeout=timeout, headless=self.headless
+            FlipkartListingExtractor(
+                use_playwright=use_playwright, timeout=timeout,
+                headless=self.headless, max_pages=self.max_pages,
             ),
         ]
 
@@ -720,16 +1592,28 @@ class EcommerceScraper:
             "failed": 0,
             "products": [],
             "errors": [],
+            "pages_scraped": 0,
         }
 
     def register_extractor(self, extractor: BaseExtractor) -> None:
-        """Register a custom extractor for additional sites."""
+        """Register a custom product page extractor for additional sites."""
         self._extractors.append(extractor)
 
+    def register_listing_extractor(self, extractor: BaseListingExtractor) -> None:
+        """Register a custom listing page extractor for additional sites."""
+        self._listing_extractors.append(extractor)
+
     def _find_extractor(self, url: str) -> Optional[BaseExtractor]:
-        """Find the appropriate extractor for a URL."""
+        """Find the appropriate product page extractor for a URL."""
         for extractor in self._extractors:
             if extractor.is_product_url(url):
+                return extractor
+        return None
+
+    def _find_listing_extractor(self, url: str) -> Optional[BaseListingExtractor]:
+        """Find the appropriate listing page extractor for a URL."""
+        for extractor in self._listing_extractors:
+            if extractor.is_listing_url(url):
                 return extractor
         return None
 
@@ -791,6 +1675,66 @@ class EcommerceScraper:
                 time.sleep(self.delay)
 
         return products
+
+    def scrape_listings(
+        self, urls: Union[str, List[str]], max_pages: int = 10
+    ) -> List[ProductData]:
+        """
+        Scrape product data from search/listing pages with pagination.
+
+        Parameters
+        ----------
+        urls : str or list of str
+            Search or category listing URLs.
+        max_pages : int
+            Maximum pages to scrape per URL.
+
+        Returns
+        -------
+        list of ProductData
+            All products found across all listing pages.
+        """
+        if isinstance(urls, str):
+            urls = [urls]
+
+        self._stats["total_urls"] = self._stats.get("total_urls", 0) + len(urls)
+        all_products: List[ProductData] = []
+
+        for i, url in enumerate(urls):
+            extractor = self._find_listing_extractor(url)
+            if not extractor:
+                self._stats["errors"].append(
+                    {"url": url, "error": "No listing extractor found for URL"}
+                )
+                self._stats["failed"] = self._stats.get("failed", 0) + 1
+                continue
+
+            try:
+                products = extractor.extract_listing(url, max_pages=max_pages)
+                all_products.extend(products)
+                self._stats["successful"] = self._stats.get("successful", 0) + 1
+                self._stats["pages_scraped"] = (
+                    self._stats.get("pages_scraped", 0)
+                    + getattr(extractor, "last_pages_scraped", 0)
+                )
+                for p in products:
+                    self._stats["products"].append(p.title[:80])
+            except Exception as e:
+                self._stats["errors"].append({"url": url, "error": str(e)})
+                self._stats["failed"] = self._stats.get("failed", 0) + 1
+
+            # Rate limiting between different listing URLs
+            if i < len(urls) - 1:
+                time.sleep(self.delay)
+
+        return all_products
+
+    def scrape_listings_to_documents(
+        self, urls: Union[str, List[str]], max_pages: int = 10
+    ) -> List[Dict[str, Any]]:
+        """Convenience: scrape listing URLs and convert to documents."""
+        products = self.scrape_listings(urls, max_pages=max_pages)
+        return self.to_documents(products)
 
     def to_documents(self, products: List[ProductData]) -> List[Dict[str, Any]]:
         """
@@ -881,6 +1825,12 @@ SUPPORTED_DOMAINS = {
     "amazon.in": "Amazon India",
     "amazon.com": "Amazon US",
     "flipkart.com": "Flipkart",
+    "meesho.com": "Meesho",
+    "myntra.com": "Myntra",
+    "ajio.com": "Ajio",
+    "ebay.com": "eBay",
+    "ebay.co.uk": "eBay UK",
+    "ebay.in": "eBay India",
 }
 
 

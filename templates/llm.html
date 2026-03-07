@@ -743,13 +743,13 @@
             <span>DataPipe</span>
         </a>
         <div class="nav-actions">
-            <a href="{{ url_for('dashboard') }}" class="nav-link">📊 Dashboard</a>
-            <a href="{{ url_for('file_manager') }}" class="nav-link">📂 Files</a>
+            <a href="{{ url_for('ml.dashboard') }}" class="nav-link">📊 Dashboard</a>
+            <a href="{{ url_for('ml.file_manager') }}" class="nav-link">📂 Files</a>
             <div class="user-pill">
                 <div class="user-avatar">👤</div>
                 <span>{{ user.username }}</span>
             </div>
-            <a href="{{ url_for('logout') }}" class="btn-logout">Sign Out</a>
+            <a href="{{ url_for('auth.logout') }}" class="btn-logout">Sign Out</a>
         </div>
     </nav>
 
@@ -796,6 +796,14 @@
                 </div>
 
                 <div id="url-list" class="file-list" style="margin-top:0.5rem"></div>
+
+                <div class="form-group"
+                    style="margin-top: 1rem; border-top: 1px solid var(--border); padding-top: 1rem;">
+                    <label for="max-pages">🛒 E-Commerce URL Scrape Depth (Max Pages)</label>
+                    <input type="number" id="max-pages" value="1" min="1" max="10" placeholder="e.g. 10">
+                    <p style="font-size: 0.75rem; color: var(--text-tertiary); margin-top: 0.25rem;">For supported
+                        stores like Amazon/Flipkart, we will follow pagination up to this limit.</p>
+                </div>
 
                 <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runIngest()" id="btn-ingest">
                     🚀 Ingest Documents
@@ -850,6 +858,34 @@
                         <label>Min Quality Score: <span id="quality-val">0.4</span></label>
                         <input type="range" id="min-quality" min="0" max="1" step="0.05" value="0.4"
                             oninput="document.getElementById('quality-val').textContent=this.value">
+                    </div>
+                </div>
+
+                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
+                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
+                        <input type="checkbox" id="use-llm"
+                            onchange="document.getElementById('llm-settings').style.display = this.checked ? 'grid' : 'none'">
+                        <label for="use-llm" style="margin: 0; font-weight: 600; color: var(--accent);">✨ Use LLM for
+                            High-Quality Generation (Overrides Chunking)</label>
+                    </div>
+
+                    <div class="form-grid" id="llm-settings" style="display: none;">
+                        <div class="form-group">
+                            <label>LLM Provider</label>
+                            <select id="llm-provider">
+                                <option value="openai">OpenAI</option>
+                                <option value="anthropic">Anthropic</option>
+                                <option value="ollama">Ollama (Local)</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Model Name</label>
+                            <input type="text" id="llm-model" value="gpt-4o-mini" placeholder="e.g. gpt-4o-mini">
+                        </div>
+                        <div class="form-group full">
+                            <label>API Key (Saved locally only, Optional for Local LLMs)</label>
+                            <input type="password" id="llm-key" placeholder="sk-... (Leave empty for Ollama)">
+                        </div>
                     </div>
                 </div>
 
@@ -1044,6 +1080,9 @@
             uploadedFiles.forEach(f => formData.append('files', f));
             formData.append('urls', JSON.stringify(urls));
 
+            const maxPages = document.getElementById('max-pages')?.value || 1;
+            formData.append('max_pages', maxPages);
+
             document.getElementById('btn-ingest').disabled = true;
             document.getElementById('loading-ingest').classList.add('visible');
 
@@ -1085,7 +1124,11 @@
                 chunk_size: parseInt(document.getElementById('chunk-size').value),
                 template: document.getElementById('template').value,
                 domain: document.getElementById('domain').value,
-                min_quality: parseFloat(document.getElementById('min-quality').value)
+                min_quality: parseFloat(document.getElementById('min-quality').value),
+                use_llm: document.getElementById('use-llm').checked,
+                llm_provider: document.getElementById('llm-provider').value,
+                llm_model: document.getElementById('llm-model').value,
+                llm_api_key: document.getElementById('llm-key').value
             };
 
             document.getElementById('btn-process').disabled = true;

@@ -114,6 +114,80 @@ class LLMPipeline:
 
         return self.documents
 
+    def ingest_ecommerce(
+        self,
+        urls: Union[str, List[str]],
+        use_playwright: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Ingest product data from e-commerce URLs.
+
+        Parameters
+        ----------
+        urls : str or list of str
+            Product URLs.
+        use_playwright : bool
+            Use Playwright for JS rendering.
+
+        Returns
+        -------
+        list of dict
+            Ingested product documents.
+        """
+        print("\n" + "=" * 60)
+        print("📥 STAGE 1: E-COMMERCE INGESTION")
+        print("=" * 60)
+
+        from .ecommerce_scraper import EcommerceScraper
+        scraper = EcommerceScraper(use_playwright=use_playwright, headless=True)
+        self.documents = scraper.scrape_to_documents(urls)
+        scraper.print_summary()
+
+        self._report["stages_completed"].append("ecommerce_ingestion")
+        self._report["ecommerce_ingestion"] = scraper.get_stats()
+
+        return self.documents
+
+    def ingest_ecommerce_listings(
+        self,
+        urls: Union[str, List[str]],
+        max_pages: int = 10,
+        use_playwright: bool = False,
+    ) -> List[Dict[str, Any]]:
+        """
+        Ingest product data from e-commerce search/listing pages
+        with pagination support (up to max_pages pages per URL).
+
+        Parameters
+        ----------
+        urls : str or list of str
+            Search or category listing URLs.
+        max_pages : int
+            Maximum pages to scrape per URL (default 10).
+        use_playwright : bool
+            Use Playwright for JS rendering.
+
+        Returns
+        -------
+        list of dict
+            Ingested product documents from all pages.
+        """
+        print("\n" + "=" * 60)
+        print("📥 STAGE 1: E-COMMERCE LISTING INGESTION (PAGINATED)")
+        print("=" * 60)
+
+        from .ecommerce_scraper import EcommerceScraper
+        scraper = EcommerceScraper(
+            use_playwright=use_playwright, headless=True, max_pages=max_pages
+        )
+        self.documents = scraper.scrape_listings_to_documents(urls, max_pages=max_pages)
+        scraper.print_summary()
+
+        self._report["stages_completed"].append("ecommerce_listing_ingestion")
+        self._report["ecommerce_listing_ingestion"] = scraper.get_stats()
+
+        return self.documents
+
     # ─── Stage 2: Chunking ───────────────────────────────────────────────
 
     def chunk(
@@ -219,6 +293,75 @@ class LLMPipeline:
         self._report["stages_completed"].append("formatting")
         self._report["formatting"] = self._formatter.get_stats()
 
+        return self.pairs
+
+    # ─── Stage 3.5: LLM-Based Generation (Alternative to 2 & 3) ─────────
+
+    def generate_with_llm(
+        self,
+        provider: str = "openai",
+        api_key: Optional[str] = None,
+        base_url: Optional[str] = None,
+        model: str = "gpt-4o-mini",
+    ) -> List[Dict[str, Any]]:
+        """
+        Alternative to chunk() and format_instructions().
+        Uses an LLM (OpenAI, Ollama, etc) to analyze full documents, clean the text,
+        extract JSON properties, and generate highly-accurate, validated QA pairs.
+        
+        This reads directly from `self.documents` and sets `self.pairs`.
+        """
+        if not self.documents:
+            raise ValueError("No documents available. Run ingest() first.")
+
+        print("\n" + "=" * 60)
+        print("🤖 STAGE 3.5: LLM-BASED INSTRUCTION GENERATION")
+        print("=" * 60)
+        
+        try:
+            from .llm_client import LLMClient
+            from .llm_data_processor import LLMDataProcessor
+        except ImportError:
+            raise ImportError("LLM Data Processor modules not found.")
+
+        client = LLMClient(provider=provider, api_key=api_key, base_url=base_url)
+        processor = LLMDataProcessor(client=client, model=model)
+        
+        all_pairs = []
+        for i, doc in enumerate(self.documents):
+            print(f"  Processing document {i+1}/{len(self.documents)} via LLM...")
+            
+            # Combine the raw text from chunks if they exist, or use raw text
+            text = doc.get("text", "")
+            if not text:
+                continue
+                
+            # Run the 5-stage cleaning pipeline
+            valid_pairs = processor.process_raw_text(text)
+            
+            # Format to target structure with metadata
+            for pair in valid_pairs:
+                pair["metadata"] = {
+                    "source": doc.get("metadata", {}).get("source", "unknown"),
+                    "doc_id": doc.get("doc_id", "unknown"),
+                    "generated_by": f"{provider}/{model}",
+                    "is_ecommerce": doc.get("source_type") == "ecommerce"
+                }
+                all_pairs.append(pair)
+                
+        self.pairs = all_pairs
+        
+        # Merge processor stats into pipeline report
+        stats = processor.get_stats()
+        print("\nLLM Generation Summary:")
+        print(f"  Docs Processed: {stats['processed']}")
+        print(f"  Pairs Generated: {stats['qa_generated']}")
+        print(f"  Passed Validation: {stats['validated_valid']}")
+        print(f"  Failed Validation: {stats['validated_invalid']}")
+        
+        self._report["stages_completed"].append("llm_generation")
+        self._report["llm_generation"] = stats
+        
         return self.pairs
 
     # ─── Stage 4: Quality Scoring ────────────────────────────────────────
@@ -431,6 +574,17 @@ class LLMPipeline:
             )
             result.update(config_files)
 
+        # Export FAISS embeddings if available
+        if self._scorer and getattr(self._scorer, "_embedding_engine", None):
+            try:
+                embed_dir = os.path.join(output_dir, "embeddings")
+                embed_files = self._scorer._embedding_engine.save_index(embed_dir)
+                result["embeddings_index"] = embed_files["index"]
+                result["embeddings_data"] = embed_files["data"]
+                print(f"🧠 Vector embeddings saved: {embed_files['index']}")
+            except Exception as e:
+                print(f"⚠️ Could not save vector embeddings: {e}")
+
         # Export pipeline report
         report_path = os.path.join(output_dir, "pipeline_report.json")
         import json
@@ -478,6 +632,88 @@ class LLMPipeline:
         return self._registry
 
     # ─── Convenience ─────────────────────────────────────────────────────
+
+    def run_ecommerce_pipeline(
+        self,
+        urls: Union[str, List[str]],
+        version: str = "v1.0.0",
+        output_dir: str = "./llm_output",
+        model: str = "meta-llama/Meta-Llama-3-8B",
+        method: str = "lora",
+        template: str = "alpaca",
+        chunk_method: str = "paragraph",
+        chunk_size: int = 1024,
+        min_quality_score: float = 0.6,
+        use_playwright: bool = False,
+        description: str = "",
+    ) -> Dict[str, str]:
+        """
+        Run the complete pipeline optimized for e-commerce product data.
+
+        Uses higher quality thresholds and e-commerce-aware formatting
+        to produce clean, reliable instruction-output pairs from
+        scraped product pages.
+
+        Parameters
+        ----------
+        urls : str or list of str
+            E-commerce product URLs.
+        version : str
+            Dataset version.
+        output_dir : str
+            Output directory.
+        model : str
+            Target LLM model name.
+        method : str
+            Fine-tuning method: 'lora', 'qlora', 'full'.
+        template : str
+            Output format: 'alpaca', 'chatml', 'sharegpt'.
+        chunk_method : str
+            Chunking strategy (default 'paragraph' for product text).
+        chunk_size : int
+            Target chunk size (default 1024 for richer context).
+        min_quality_score : float
+            Minimum quality score (default 0.6, higher than generic).
+        use_playwright : bool
+            Use Playwright for JS rendering.
+        description : str
+            Dataset version description.
+
+        Returns
+        -------
+        dict
+            Paths to all generated files.
+        """
+        print("\n" + "🛒" * 20)
+        print("  E-COMMERCE LLM PIPELINE — FULL RUN")
+        print("🛒" * 20)
+
+        # Stage 1: E-commerce Ingest
+        self.ingest_ecommerce(urls, use_playwright=use_playwright)
+
+        # Stage 2: Chunk
+        self.chunk(method=chunk_method, chunk_size=chunk_size)
+
+        # Stage 3: Format with e-commerce domain
+        self.format_instructions(
+            template=template, domain="ecommerce", pairs_per_chunk=3
+        )
+
+        # Stage 4: Quality scoring with higher threshold
+        self.score_quality(min_score=min_quality_score)
+
+        # Stage 5: Version
+        self.version_dataset(version=version, description=description)
+
+        # Stage 6: Config
+        self.generate_training_config(model=model, method=method)
+
+        # Export
+        result = self.export(output_dir)
+
+        self._print_final_summary()
+
+        return result
 
     def run_full_pipeline(
         self,

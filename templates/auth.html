@@ -290,7 +290,7 @@
     <div class="ambient"></div>
 
     <nav class="navbar">
-        <a href="{{ url_for('index') }}" class="navbar-brand">
+        <a href="{{ url_for('ml.index') }}" class="navbar-brand">
             <div class="brand-mark">DP</div>
             <span>DataPipe</span>
         </a>
@@ -328,9 +328,9 @@
 
             <div class="switch-mode">
                 {% if mode == 'login' %}
-                Don't have an account? <a href="{{ url_for('signup') }}">Sign up</a>
+                Don't have an account? <a href="{{ url_for('auth.signup') }}">Sign up</a>
                 {% else %}
-                Already have an account? <a href="{{ url_for('login') }}">Sign in</a>
+                Already have an account? <a href="{{ url_for('auth.login') }}">Sign in</a>
                 {% endif %}
             </div>
 

@@ -113,7 +113,7 @@ def get_current_user():
     if not payload or payload.get("type") != "access":
         return None
 
-    user = User.query.get(int(payload["sub"]))
+    user = User.query.filter_by(id=int(payload["sub"])).first()
     return user
 
 
