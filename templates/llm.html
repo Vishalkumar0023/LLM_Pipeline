@@ -1,0 +1,1219 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Pipeline — DataPipe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #060911;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.07);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(56, 189, 248, 0.2);
+            --text-primary: #f0f2f5;
+            --text-secondary: rgba(255, 255, 255, 0.55);
+            --text-tertiary: rgba(255, 255, 255, 0.3);
+            --accent: #38bdf8;
+            --accent-2: #818cf8;
+            --accent-3: #34d399;
+            --danger: #f87171;
+            --gradient-primary: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+            --radius: 20px;
+            --radius-sm: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(56, 189, 248, 0.10) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 40% at 80% 50%, rgba(129, 140, 248, 0.05) 0%, transparent 50%);
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 0 2rem;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(6, 9, 17, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .navbar-brand {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-mark {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 800;
+            color: #060911;
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            padding: 0.4rem 0.875rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .user-pill {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.3rem 0.75rem 0.3rem 0.3rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 20px;
+            font-size: 0.8125rem;
+            font-weight: 500;
+        }
+
+        .user-avatar {
+            width: 28px;
+            height: 28px;
+            background: rgba(56, 189, 248, 0.2);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+        }
+
+        .btn-logout {
+            color: var(--text-secondary);
+            background: none;
+            border: none;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            cursor: pointer;
+            text-decoration: none;
+            padding: 0.4rem 0.6rem;
+            border-radius: 8px;
+        }
+
+        .btn-logout:hover {
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
+        }
+
+        /* ── Main ── */
+        .main {
+            position: relative;
+            z-index: 10;
+            max-width: 960px;
+            margin: 0 auto;
+            padding: 5rem 1.5rem 2rem;
+        }
+
+        .page-header {
+            margin-bottom: 1.5rem;
+        }
+
+        .page-header h1 {
+            font-size: 1.75rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.25rem;
+        }
+
+        .page-header p {
+            font-size: 0.9375rem;
+            color: var(--text-secondary);
+        }
+
+        /* ── Glass Card ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            margin-bottom: 1rem;
+            overflow: hidden;
+            animation: slideUp 0.5s ease-out backwards;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .card:nth-child(2) {
+            animation-delay: 0.05s;
+        }
+
+        .card:nth-child(3) {
+            animation-delay: 0.1s;
+        }
+
+        .card:nth-child(4) {
+            animation-delay: 0.15s;
+        }
+
+        .card:nth-child(5) {
+            animation-delay: 0.2s;
+        }
+
+        .card-head {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .card-icon {
+            width: 36px;
+            height: 36px;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.125rem;
+        }
+
+        .ci-blue {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+        }
+
+        .ci-purple {
+            background: rgba(129, 140, 248, 0.1);
+            border: 1px solid rgba(129, 140, 248, 0.15);
+        }
+
+        .ci-green {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.15);
+        }
+
+        .ci-amber {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.15);
+        }
+
+        .ci-pink {
+            background: rgba(244, 114, 182, 0.1);
+            border: 1px solid rgba(244, 114, 182, 0.15);
+        }
+
+        .ci-cyan {
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.15);
+        }
+
+        .card-head h2 {
+            font-size: 1rem;
+            font-weight: 600;
+            flex: 1;
+        }
+
+        .badge {
+            padding: 0.15rem 0.5rem;
+            border-radius: 6px;
+            font-size: 0.6875rem;
+            font-weight: 600;
+            background: rgba(56, 189, 248, 0.15);
+            color: #38bdf8;
+            border: 1px solid rgba(56, 189, 248, 0.2);
+        }
+
+        .badge-success {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+            border-color: rgba(52, 211, 153, 0.2);
+        }
+
+        .badge-warning {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+            border-color: rgba(251, 191, 36, 0.2);
+        }
+
+        .card-body {
+            padding: 1.25rem;
+        }
+
+        /* ── Upload Zone ── */
+        .upload-zone {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 2.5rem 1.5rem;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.25s;
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .upload-zone:hover,
+        .upload-zone.dragover {
+            border-color: var(--accent);
+            background: rgba(56, 189, 248, 0.05);
+        }
+
+        .upload-zone .icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .upload-zone .title {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-bottom: 0.25rem;
+        }
+
+        .upload-zone .hint {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .url-input-row {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        /* ── Form Elements ── */
+        .form-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.75rem;
+        }
+
+        .form-group {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+        }
+
+        .form-group.full {
+            grid-column: 1 / -1;
+        }
+
+        .form-group label {
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-group input,
+        .form-group select,
+        .url-input-row input {
+            background: rgba(255, 255, 255, 0.04);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.625rem 0.875rem;
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            font-family: inherit;
+            transition: border-color 0.2s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .url-input-row input:focus {
+            outline: none;
+            border-color: rgba(56, 189, 248, 0.4);
+        }
+
+        .form-group select option {
+            background: #111827;
+            color: white;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            border: none;
+            padding: 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 0 8px rgba(56, 189, 248, 0.4);
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.625rem 1rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            color: var(--text-primary);
+            font-size: 0.875rem;
+            font-weight: 600;
+            font-family: inherit;
+            cursor: pointer;
+            transition: all 0.2s;
+            text-decoration: none;
+        }
+
+        .btn:hover {
+            background: var(--bg-card-hover);
+        }
+
+        .btn:active {
+            transform: scale(0.97);
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: #060911;
+            border: none;
+            font-weight: 700;
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
+            transform: translateY(-1px);
+        }
+
+        .btn-full {
+            width: 100%;
+            justify-content: center;
+        }
+
+        /* ── Stats Row ── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 0.75rem;
+            margin-top: 1rem;
+        }
+
+        .stats-row .si {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            padding: 0.875rem;
+            text-align: center;
+        }
+
+        .stats-row .si .val {
+            font-size: 1.25rem;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .stats-row .si .lbl {
+            font-size: 0.6875rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-top: 0.15rem;
+        }
+
+        /* ── Result panels ── */
+        .result-list {
+            max-height: 300px;
+            overflow-y: auto;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+        }
+
+        .result-item {
+            padding: 0.75rem 1rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.8125rem;
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .result-item:last-child {
+            border-bottom: none;
+        }
+
+        .result-item .score {
+            min-width: 48px;
+            text-align: center;
+            padding: 0.2rem 0.4rem;
+            border-radius: 6px;
+            font-weight: 700;
+            font-size: 0.75rem;
+        }
+
+        .score-high {
+            background: rgba(52, 211, 153, 0.15);
+            color: #34d399;
+        }
+
+        .score-mid {
+            background: rgba(251, 191, 36, 0.15);
+            color: #fbbf24;
+        }
+
+        .score-low {
+            background: rgba(248, 113, 113, 0.15);
+            color: #f87171;
+        }
+
+        .result-item .text {
+            flex: 1;
+            color: var(--text-secondary);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        /* ── Alerts ── */
+        .alert {
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-sm);
+            margin-bottom: 1rem;
+            display: none;
+            font-size: 0.875rem;
+        }
+
+        .alert.visible {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .alert-error {
+            background: rgba(248, 113, 113, 0.1);
+            border: 1px solid rgba(248, 113, 113, 0.2);
+            color: #fca5a5;
+        }
+
+        .alert-success {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.2);
+            color: #6ee7b7;
+        }
+
+        /* ── Loading ── */
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 2rem;
+        }
+
+        .loading.visible {
+            display: block;
+        }
+
+        .spinner {
+            width: 36px;
+            height: 36px;
+            border: 3px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 0.75rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* ── Runs Table ── */
+        .runs-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8125rem;
+        }
+
+        .runs-table th {
+            text-align: left;
+            padding: 0.625rem 0.75rem;
+            font-size: 0.6875rem;
+            font-weight: 700;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .runs-table td {
+            padding: 0.625rem 0.75rem;
+            border-bottom: 1px solid var(--border);
+            color: var(--text-secondary);
+        }
+
+        .runs-table tbody tr:hover {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 600px) {
+            .main {
+                padding: 5rem 0.75rem 1.5rem;
+            }
+
+            .form-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .stats-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .url-input-row {
+                flex-direction: column;
+            }
+        }
+
+        /* Hidden */
+        .hidden {
+            display: none !important;
+        }
+
+        /* File list */
+        .file-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+
+        .file-tag {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.35rem;
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+            padding: 0.3rem 0.6rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: #38bdf8;
+        }
+
+        .file-tag .remove {
+            cursor: pointer;
+            opacity: 0.6;
+            transition: opacity 0.15s;
+        }
+
+        .file-tag .remove:hover {
+            opacity: 1;
+        }
+
+        /* Pipeline step indicator */
+        .pipeline-steps {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .pipeline-step {
+            display: flex;
+            align-items: center;
+            gap: 0.35rem;
+            padding: 0.35rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-tertiary);
+            transition: all 0.3s;
+        }
+
+        .pipeline-step.active {
+            border-color: rgba(56, 189, 248, 0.3);
+            color: var(--accent);
+            background: rgba(56, 189, 248, 0.08);
+        }
+
+        .pipeline-step.done {
+            border-color: rgba(52, 211, 153, 0.3);
+            color: var(--accent-3);
+            background: rgba(52, 211, 153, 0.08);
+        }
+
+        .pipeline-step .num {
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.625rem;
+            font-weight: 800;
+            background: var(--border);
+            color: var(--text-tertiary);
+        }
+
+        .pipeline-step.active .num {
+            background: var(--accent);
+            color: #060911;
+        }
+
+        .pipeline-step.done .num {
+            background: var(--accent-3);
+            color: #060911;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ambient"></div>
+
+    <!-- ── Navbar ── -->
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">
+            <div class="brand-mark">DP</div>
+            <span>DataPipe</span>
+        </a>
+        <div class="nav-actions">
+            <a href="{{ url_for('dashboard') }}" class="nav-link">📊 Dashboard</a>
+            <a href="{{ url_for('file_manager') }}" class="nav-link">📂 Files</a>
+            <div class="user-pill">
+                <div class="user-avatar">👤</div>
+                <span>{{ user.username }}</span>
+            </div>
+            <a href="{{ url_for('logout') }}" class="btn-logout">Sign Out</a>
+        </div>
+    </nav>
+
+    <div class="main">
+        <!-- ── Page Header ── -->
+        <div class="page-header">
+            <h1>🧬 LLM Fine-Tuning Pipeline</h1>
+            <p>Ingest documents → Chunk → Format → Score → Version → Export training data</p>
+        </div>
+
+        <!-- ── Pipeline Progress ── -->
+        <div class="pipeline-steps">
+            <div class="pipeline-step active" id="step-1"><span class="num">1</span> Ingest</div>
+            <div class="pipeline-step" id="step-2"><span class="num">2</span> Chunk</div>
+            <div class="pipeline-step" id="step-3"><span class="num">3</span> Format</div>
+            <div class="pipeline-step" id="step-4"><span class="num">4</span> Score</div>
+            <div class="pipeline-step" id="step-5"><span class="num">5</span> Export</div>
+        </div>
+
+        <div id="alert-error" class="alert alert-error"></div>
+        <div id="alert-success" class="alert alert-success"></div>
+
+        <!-- ═══════════ STAGE 1: INGEST ═══════════ -->
+        <div class="card" id="card-ingest">
+            <div class="card-head">
+                <div class="card-icon ci-blue">📥</div>
+                <h2>Stage 1 — Document Ingestion</h2>
+                <span class="badge">Layer 1</span>
+            </div>
+            <div class="card-body">
+                <div class="upload-zone" id="upload-zone" onclick="document.getElementById('file-input').click()">
+                    <div class="icon">📁</div>
+                    <div class="title">Drop files here</div>
+                    <div class="hint">PDF, TXT, MD, JSON, XML — up to 50 MB each</div>
+                </div>
+                <input type="file" id="file-input" multiple accept=".pdf,.txt,.md,.json,.xml,.csv" style="display:none">
+
+                <div class="file-list" id="file-list"></div>
+
+                <div class="url-input-row">
+                    <input type="text" id="url-input" placeholder="Or paste a URL to scrape (https://...)"
+                        style="flex:1">
+                    <button class="btn" onclick="addUrl()">+ Add URL</button>
+                </div>
+
+                <div id="url-list" class="file-list" style="margin-top:0.5rem"></div>
+
+                <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runIngest()" id="btn-ingest">
+                    🚀 Ingest Documents
+                </button>
+
+                <div class="loading" id="loading-ingest">
+                    <div class="spinner"></div>
+                    <p style="color:var(--text-secondary)">Ingesting documents...</p>
+                </div>
+
+                <div id="ingest-results" class="hidden">
+                    <div class="stats-row" id="ingest-stats"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ STAGE 2: CHUNK + FORMAT CONFIG ═══════════ -->
+        <div class="card hidden" id="card-config">
+            <div class="card-head">
+                <div class="card-icon ci-purple">⚙️</div>
+                <h2>Stage 2 — Chunking & Formatting Config</h2>
+                <span class="badge">Layers 2–3</span>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Chunking Method</label>
+                        <select id="chunk-method">
+                            <option value="sliding_window">Sliding Window</option>
+                            <option value="paragraph">Paragraph</option>
+                            <option value="sentence">Sentence</option>
+                            <option value="token_aware">Token-Aware</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Chunk Size (chars)</label>
+                        <input type="number" id="chunk-size" value="512" min="100" max="4096">
+                    </div>
+                    <div class="form-group">
+                        <label>Output Template</label>
+                        <select id="template">
+                            <option value="alpaca">Alpaca</option>
+                            <option value="chatml">ChatML</option>
+                            <option value="sharegpt">ShareGPT</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Domain</label>
+                        <input type="text" id="domain" value="general" placeholder="e.g. medical, legal, finance">
+                    </div>
+                    <div class="form-group full">
+                        <label>Min Quality Score: <span id="quality-val">0.4</span></label>
+                        <input type="range" id="min-quality" min="0" max="1" step="0.05" value="0.4"
+                            oninput="document.getElementById('quality-val').textContent=this.value">
+                    </div>
+                </div>
+
+                <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runProcess()"
+                    id="btn-process">
+                    ⚡ Process Pipeline
+                </button>
+
+                <div class="loading" id="loading-process">
+                    <div class="spinner"></div>
+                    <p style="color:var(--text-secondary)">Chunking → Formatting → Scoring...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ STAGE 3: RESULTS ═══════════ -->
+        <div class="card hidden" id="card-results">
+            <div class="card-head">
+                <div class="card-icon ci-green">📊</div>
+                <h2>Stage 3 — Quality Results</h2>
+                <span class="badge badge-success">Complete</span>
+            </div>
+            <div class="card-body">
+                <div class="stats-row" id="result-stats"></div>
+
+                <h3 style="font-size:0.875rem; font-weight:600; margin:1.25rem 0 0.5rem;">Sample Pairs</h3>
+                <div class="result-list" id="result-pairs"></div>
+            </div>
+        </div>
+
+        <!-- ═══════════ STAGE 4: EXPORT ═══════════ -->
+        <div class="card hidden" id="card-export">
+            <div class="card-head">
+                <div class="card-icon ci-amber">💾</div>
+                <h2>Stage 4 — Version & Export</h2>
+                <span class="badge">Layers 4–5</span>
+            </div>
+            <div class="card-body">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Dataset Version</label>
+                        <input type="text" id="version" value="v1.0.0" placeholder="e.g. v1.0.0">
+                    </div>
+                    <div class="form-group">
+                        <label>Description</label>
+                        <input type="text" id="description" placeholder="Dataset description">
+                    </div>
+                    <div class="form-group">
+                        <label>Target Model</label>
+                        <select id="target-model">
+                            <option value="meta-llama/Meta-Llama-3-8B">Llama 3 8B</option>
+                            <option value="mistralai/Mistral-7B-v0.3">Mistral 7B</option>
+                            <option value="microsoft/Phi-3-mini-4k-instruct">Phi-3 Mini</option>
+                            <option value="google/gemma-7b">Gemma 7B</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Fine-Tune Method</label>
+                        <select id="ft-method">
+                            <option value="lora">LoRA</option>
+                            <option value="qlora">QLoRA (4-bit)</option>
+                            <option value="full">Full Fine-Tune</option>
+                        </select>
+                    </div>
+                </div>
+
+                <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runExport()" id="btn-export">
+                    📦 Version & Export
+                </button>
+
+                <div class="loading" id="loading-export">
+                    <div class="spinner"></div>
+                    <p style="color:var(--text-secondary)">Versioning & generating config...</p>
+                </div>
+
+                <div id="export-results" class="hidden" style="margin-top:1rem">
+                    <div class="stats-row" id="export-stats"></div>
+                    <div style="display:flex; gap:0.5rem; margin-top:1rem; flex-wrap:wrap;" id="download-links"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ═══════════ MONITORING ═══════════ -->
+        <div class="card" id="card-monitor">
+            <div class="card-head">
+                <div class="card-icon ci-cyan">📈</div>
+                <h2>Monitoring — Run History</h2>
+                <span class="badge">Layer 6</span>
+            </div>
+            <div class="card-body">
+                <div id="runs-container">
+                    <p style="text-align:center; color:var(--text-tertiary); padding:1.5rem; font-size:0.875rem;">
+                        No runs logged yet. Complete the pipeline to see metrics here.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // ── State ──
+        let uploadedFiles = [];
+        let urls = [];
+        let sessionId = null;
+
+        // ── Helpers ──
+        function showAlert(type, msg) {
+            const el = document.getElementById(`alert-${type}`);
+            el.textContent = (type === 'error' ? '❌ ' : '✅ ') + msg;
+            el.classList.add('visible');
+            setTimeout(() => el.classList.remove('visible'), 6000);
+        }
+
+        function setStep(n) {
+            for (let i = 1; i <= 5; i++) {
+                const s = document.getElementById(`step-${i}`);
+                s.classList.remove('active', 'done');
+                if (i < n) s.classList.add('done');
+                if (i === n) s.classList.add('active');
+            }
+        }
+
+        function show(id) { document.getElementById(id).classList.remove('hidden'); }
+        function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+        // ── File upload ──
+        const uploadZone = document.getElementById('upload-zone');
+        const fileInput = document.getElementById('file-input');
+
+        uploadZone.addEventListener('dragover', e => {
+            e.preventDefault(); uploadZone.classList.add('dragover');
+        });
+        uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('dragover'));
+        uploadZone.addEventListener('drop', e => {
+            e.preventDefault(); uploadZone.classList.remove('dragover');
+            handleFiles(e.dataTransfer.files);
+        });
+        fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+        function handleFiles(files) {
+            for (const f of files) {
+                if (!uploadedFiles.find(u => u.name === f.name)) {
+                    uploadedFiles.push(f);
+                }
+            }
+            renderFileList();
+        }
+
+        function removeFile(idx) {
+            uploadedFiles.splice(idx, 1);
+            renderFileList();
+        }
+
+        function renderFileList() {
+            const el = document.getElementById('file-list');
+            el.innerHTML = uploadedFiles.map((f, i) =>
+                `<div class="file-tag">📄 ${f.name} <span class="remove" onclick="removeFile(${i})">✕</span></div>`
+            ).join('');
+        }
+
+        // ── URL ──
+        function addUrl() {
+            const input = document.getElementById('url-input');
+            const url = input.value.trim();
+            if (!url) return;
+            if (!url.startsWith('http')) { showAlert('error', 'Enter a valid URL starting with http'); return; }
+            urls.push(url);
+            input.value = '';
+            renderUrlList();
+        }
+
+        function removeUrl(idx) {
+            urls.splice(idx, 1);
+            renderUrlList();
+        }
+
+        function renderUrlList() {
+            const el = document.getElementById('url-list');
+            el.innerHTML = urls.map((u, i) =>
+                `<div class="file-tag">🌐 ${u.length > 40 ? u.substring(0, 40) + '...' : u} <span class="remove" onclick="removeUrl(${i})">✕</span></div>`
+            ).join('');
+        }
+
+        // ── API: Ingest ──
+        async function runIngest() {
+            if (uploadedFiles.length === 0 && urls.length === 0) {
+                showAlert('error', 'Upload at least one file or add a URL');
+                return;
+            }
+
+            const formData = new FormData();
+            uploadedFiles.forEach(f => formData.append('files', f));
+            formData.append('urls', JSON.stringify(urls));
+
+            document.getElementById('btn-ingest').disabled = true;
+            document.getElementById('loading-ingest').classList.add('visible');
+
+            try {
+                const resp = await fetch('/api/llm/ingest', { method: 'POST', body: formData });
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error || 'Ingestion failed');
+
+                sessionId = data.session_id;
+
+                document.getElementById('ingest-stats').innerHTML = `
+                    <div class="si"><div class="val">${data.total_docs}</div><div class="lbl">Documents</div></div>
+                    <div class="si"><div class="val">${data.total_chars.toLocaleString()}</div><div class="lbl">Characters</div></div>
+                    <div class="si"><div class="val">${data.source_types.length}</div><div class="lbl">Source Types</div></div>
+                    <div class="si"><div class="val">${data.total_words.toLocaleString()}</div><div class="lbl">Words</div></div>
+                `;
+
+                show('ingest-results');
+                show('card-config');
+                setStep(2);
+                showAlert('success', `Ingested ${data.total_docs} documents successfully`);
+                document.getElementById('card-config').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (err) {
+                showAlert('error', err.message);
+            } finally {
+                document.getElementById('btn-ingest').disabled = false;
+                document.getElementById('loading-ingest').classList.remove('visible');
+            }
+        }
+
+        // ── API: Process ──
+        async function runProcess() {
+            if (!sessionId) { showAlert('error', 'Run ingestion first'); return; }
+
+            const payload = {
+                session_id: sessionId,
+                chunk_method: document.getElementById('chunk-method').value,
+                chunk_size: parseInt(document.getElementById('chunk-size').value),
+                template: document.getElementById('template').value,
+                domain: document.getElementById('domain').value,
+                min_quality: parseFloat(document.getElementById('min-quality').value)
+            };
+
+            document.getElementById('btn-process').disabled = true;
+            document.getElementById('loading-process').classList.add('visible');
+
+            try {
+                const resp = await fetch('/api/llm/process', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error || 'Processing failed');
+
+                // Stats
+                document.getElementById('result-stats').innerHTML = `
+                    <div class="si"><div class="val">${data.total_chunks}</div><div class="lbl">Chunks</div></div>
+                    <div class="si"><div class="val">${data.total_pairs}</div><div class="lbl">Pairs</div></div>
+                    <div class="si"><div class="val">${data.filtered_pairs}</div><div class="lbl">After Filter</div></div>
+                    <div class="si"><div class="val">${data.avg_quality.toFixed(2)}</div><div class="lbl">Avg Quality</div></div>
+                `;
+
+                // Sample pairs
+                const pairsHtml = (data.sample_pairs || []).map(p => {
+                    const s = p.quality?.overall_score || 0;
+                    const cls = s >= 0.6 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low';
+                    const instr = p.instruction || (p.messages?.[1]?.content) || '—';
+                    return `<div class="result-item">
+                        <span class="score ${cls}">${s.toFixed(2)}</span>
+                        <span class="text">${instr.substring(0, 120)}...</span>
+                    </div>`;
+                }).join('');
+                document.getElementById('result-pairs').innerHTML = pairsHtml || '<p style="padding:1rem;color:var(--text-tertiary);">No pairs</p>';
+
+                show('card-results');
+                show('card-export');
+                setStep(4);
+                showAlert('success', `Generated ${data.filtered_pairs} quality pairs from ${data.total_chunks} chunks`);
+                document.getElementById('card-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (err) {
+                showAlert('error', err.message);
+            } finally {
+                document.getElementById('btn-process').disabled = false;
+                document.getElementById('loading-process').classList.remove('visible');
+            }
+        }
+
+        // ── API: Export ──
+        async function runExport() {
+            if (!sessionId) { showAlert('error', 'Run the pipeline first'); return; }
+
+            const payload = {
+                session_id: sessionId,
+                version: document.getElementById('version').value,
+                description: document.getElementById('description').value,
+                model: document.getElementById('target-model').value,
+                method: document.getElementById('ft-method').value
+            };
+
+            document.getElementById('btn-export').disabled = true;
+            document.getElementById('loading-export').classList.add('visible');
+
+            try {
+                const resp = await fetch('/api/llm/export', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+                const data = await resp.json();
+
+                if (!resp.ok) throw new Error(data.error || 'Export failed');
+
+                document.getElementById('export-stats').innerHTML = `
+                    <div class="si"><div class="val">${data.sample_count}</div><div class="lbl">Samples</div></div>
+                    <div class="si"><div class="val">${data.version}</div><div class="lbl">Version</div></div>
+                    <div class="si"><div class="val">${data.model_short}</div><div class="lbl">Model</div></div>
+                    <div class="si"><div class="val">${data.method.toUpperCase()}</div><div class="lbl">Method</div></div>
+                `;
+
+                // Download links
+                const links = (data.files || []).map(f =>
+                    `<a href="/api/llm/download/${sessionId}/${f.name}" class="btn" download>⬇️ ${f.label}</a>`
+                ).join('');
+                document.getElementById('download-links').innerHTML = links;
+
+                show('export-results');
+                setStep(5);
+                showAlert('success', `Exported ${data.sample_count} samples as v${data.version}`);
+
+                // Refresh monitoring
+                loadRuns();
+            } catch (err) {
+                showAlert('error', err.message);
+            } finally {
+                document.getElementById('btn-export').disabled = false;
+                document.getElementById('loading-export').classList.remove('visible');
+            }
+        }
+
+        // ── Load monitoring runs ──
+        async function loadRuns() {
+            try {
+                const resp = await fetch('/api/llm/runs');
+                const data = await resp.json();
+
+                if (data.runs && data.runs.length > 0) {
+                    let html = '<table class="runs-table"><thead><tr><th>Run</th><th>Samples</th><th>Avg Quality</th><th>Template</th><th>Date</th></tr></thead><tbody>';
+                    data.runs.forEach(r => {
+                        html += `<tr>
+                            <td style="font-weight:600; color:var(--text-primary)">${r.run_id}</td>
+                            <td>${r.sample_count || '—'}</td>
+                            <td>${r.avg_quality ? r.avg_quality.toFixed(2) : '—'}</td>
+                            <td>${r.template || '—'}</td>
+                            <td>${new Date(r.timestamp).toLocaleDateString()}</td>
+                        </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    document.getElementById('runs-container').innerHTML = html;
+                }
+            } catch (e) {
+                // silently ignore
+            }
+        }
+
+        // Initial load
+        loadRuns();
+    </script>
+</body>
+
+</html>

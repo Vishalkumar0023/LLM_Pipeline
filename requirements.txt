@@ -1,0 +1,18 @@
+Flask
+Flask-SQLAlchemy
+SQLAlchemy
+PyJWT
+Werkzeug
+gunicorn
+
+pandas
+numpy
+scikit-learn
+matplotlib
+joblib
+openpyxl
+
+# LLM Pipeline (optional — install for document ingestion)
+pdfplumber
+beautifulsoup4
+requests

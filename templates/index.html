@@ -1,0 +1,1090 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DataPipe — Enterprise Data & LLM Pipeline</title>
+    <meta name="description"
+        content="Clean, analyze, and transform your datasets. Prepare domain-specific LLM fine-tuning data. All in one intelligent platform.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
+    <style>
+        /* ───── Clarid-Style Dark Premium Design ───── */
+        :root {
+            --bg-deep: #060911;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.07);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(56, 189, 248, 0.2);
+            --text-primary: #f0f2f5;
+            --text-secondary: rgba(255, 255, 255, 0.55);
+            --text-tertiary: rgba(255, 255, 255, 0.3);
+            --accent: #38bdf8;
+            --accent-2: #818cf8;
+            --accent-3: #34d399;
+            --gradient-primary: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+            --gradient-stats: linear-gradient(135deg, #0d9488, #38bdf8, #818cf8);
+            --glow-teal: rgba(56, 189, 248, 0.15);
+            --glow-purple: rgba(129, 140, 248, 0.1);
+            --radius: 20px;
+            --radius-sm: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html {
+            scroll-behavior: smooth;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            -webkit-font-smoothing: antialiased;
+        }
+
+        /* ── Ambient glow background ── */
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(56, 189, 248, 0.12) 0%, transparent 60%),
+                radial-gradient(ellipse 60% 50% at 80% 50%, rgba(129, 140, 248, 0.06) 0%, transparent 50%),
+                radial-gradient(ellipse 50% 40% at 20% 80%, rgba(52, 211, 153, 0.04) 0%, transparent 50%);
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 0 2rem;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(6, 9, 17, 0.8);
+            backdrop-filter: blur(20px) saturate(180%);
+            -webkit-backdrop-filter: blur(20px) saturate(180%);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .navbar-brand {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            letter-spacing: -0.3px;
+        }
+
+        .brand-mark {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 800;
+            color: #060911;
+        }
+
+        .nav-center {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            padding: 0.4rem 0.875rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover,
+        .nav-link.active {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .nav-right {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .btn-nav-signup {
+            padding: 0.5rem 1.25rem;
+            border-radius: 10px;
+            background: var(--gradient-primary);
+            color: #060911;
+            font-size: 0.8125rem;
+            font-weight: 700;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn-nav-signup:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(56, 189, 248, 0.3);
+        }
+
+        /* ── Sections ── */
+        section {
+            position: relative;
+            z-index: 10;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 1.5rem;
+        }
+
+        /* ── HERO ── */
+        .hero {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            padding: 7rem 1.5rem 4rem;
+            position: relative;
+        }
+
+        /* Hero center glow */
+        .hero::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 600px;
+            height: 400px;
+            background: radial-gradient(ellipse, rgba(56, 189, 248, 0.12) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .hero-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 50px;
+            padding: 0.35rem 1rem 0.35rem 0.5rem;
+            font-size: 0.8125rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            animation: fadeUp 0.6s ease-out;
+        }
+
+        .hero-badge .dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-3);
+            border-radius: 50%;
+            box-shadow: 0 0 8px rgba(52, 211, 153, 0.5);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.4;
+            }
+        }
+
+        .hero h1 {
+            font-size: clamp(2.75rem, 6.5vw, 4.5rem);
+            font-weight: 800;
+            letter-spacing: -2px;
+            line-height: 1.05;
+            margin-bottom: 1.5rem;
+            animation: fadeUp 0.6s ease-out 0.1s backwards;
+        }
+
+        .hero h1 .gradient {
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .hero-sub {
+            font-size: 1.125rem;
+            color: var(--text-secondary);
+            max-width: 560px;
+            line-height: 1.7;
+            margin-bottom: 2.5rem;
+            animation: fadeUp 0.6s ease-out 0.2s backwards;
+        }
+
+        .hero-actions {
+            display: flex;
+            gap: 0.75rem;
+            flex-wrap: wrap;
+            justify-content: center;
+            animation: fadeUp 0.6s ease-out 0.3s backwards;
+        }
+
+        @keyframes fadeUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .btn-primary {
+            padding: 0.875rem 2rem;
+            border-radius: 14px;
+            background: var(--gradient-primary);
+            color: #060911;
+            font-size: 1rem;
+            font-weight: 700;
+            text-decoration: none;
+            border: none;
+            cursor: pointer;
+            transition: all 0.25s;
+            font-family: inherit;
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 30px rgba(56, 189, 248, 0.35);
+        }
+
+        .btn-secondary {
+            padding: 0.875rem 2rem;
+            border-radius: 14px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.25s;
+            font-family: inherit;
+            cursor: pointer;
+        }
+
+        .btn-secondary:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-2px);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        /* ── Social proof ── */
+        .social-proof {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 2.5rem;
+            animation: fadeUp 0.6s ease-out 0.4s backwards;
+        }
+
+        .avatar-stack {
+            display: flex;
+        }
+
+        .avatar-stack span {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            border: 2px solid var(--bg-deep);
+            margin-left: -8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75rem;
+            background: var(--bg-card);
+        }
+
+        .avatar-stack span:first-child {
+            margin-left: 0;
+        }
+
+        .avatar-stack span:nth-child(1) {
+            background: linear-gradient(135deg, #f472b6, #ec4899);
+        }
+
+        .avatar-stack span:nth-child(2) {
+            background: linear-gradient(135deg, #60a5fa, #3b82f6);
+        }
+
+        .avatar-stack span:nth-child(3) {
+            background: linear-gradient(135deg, #34d399, #10b981);
+        }
+
+        .avatar-stack span:nth-child(4) {
+            background: linear-gradient(135deg, #fbbf24, #f59e0b);
+        }
+
+        .social-proof-text {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+        }
+
+        .social-proof-text strong {
+            color: var(--text-primary);
+        }
+
+        /* ── Stats Bar ── */
+        .stats-section {
+            padding: 0 0 5rem;
+            animation: fadeUp 0.6s ease-out 0.5s backwards;
+        }
+
+        .stats-bar {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            padding: 2.5rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stats-bar::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: var(--radius);
+            padding: 1px;
+            background: linear-gradient(135deg, rgba(56, 189, 248, 0.3), rgba(129, 140, 248, 0.15), rgba(192, 132, 252, 0.1));
+            -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0);
+            -webkit-mask-composite: xor;
+            mask-composite: exclude;
+            pointer-events: none;
+        }
+
+        .stat-item {
+            text-align: center;
+            position: relative;
+        }
+
+        .stat-item:not(:last-child)::after {
+            content: '';
+            position: absolute;
+            right: 0;
+            top: 10%;
+            height: 80%;
+            width: 1px;
+            background: var(--border);
+        }
+
+        .stat-value {
+            font-size: 2.25rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }
+
+        .stat-caption {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 500;
+        }
+
+        .stat-sub {
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
+            margin-top: 0.15rem;
+        }
+
+        /* ── Features ── */
+        .features-section {
+            padding: 5rem 0;
+        }
+
+        .section-header {
+            text-align: center;
+            margin-bottom: 3.5rem;
+        }
+
+        .section-eyebrow {
+            font-size: 0.75rem;
+            font-weight: 700;
+            color: var(--accent);
+            text-transform: uppercase;
+            letter-spacing: 2.5px;
+            margin-bottom: 0.75rem;
+        }
+
+        .section-title {
+            font-size: clamp(1.75rem, 4vw, 2.75rem);
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 0.75rem;
+        }
+
+        .section-desc {
+            font-size: 1.0625rem;
+            color: var(--text-secondary);
+            max-width: 520px;
+            margin: 0 auto;
+            line-height: 1.65;
+        }
+
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.75rem 1.5rem;
+            transition: all 0.3s;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, transparent, var(--border-glow), transparent);
+            opacity: 0;
+            transition: opacity 0.3s;
+        }
+
+        .feature-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-4px);
+            border-color: rgba(255, 255, 255, 0.12);
+        }
+
+        .feature-card:hover::before {
+            opacity: 1;
+        }
+
+        .feature-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 14px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.375rem;
+            margin-bottom: 1rem;
+        }
+
+        .fi-blue {
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+        }
+
+        .fi-purple {
+            background: rgba(129, 140, 248, 0.1);
+            border: 1px solid rgba(129, 140, 248, 0.15);
+        }
+
+        .fi-green {
+            background: rgba(52, 211, 153, 0.1);
+            border: 1px solid rgba(52, 211, 153, 0.15);
+        }
+
+        .fi-pink {
+            background: rgba(244, 114, 182, 0.1);
+            border: 1px solid rgba(244, 114, 182, 0.15);
+        }
+
+        .fi-amber {
+            background: rgba(251, 191, 36, 0.1);
+            border: 1px solid rgba(251, 191, 36, 0.15);
+        }
+
+        .fi-cyan {
+            background: rgba(34, 211, 238, 0.1);
+            border: 1px solid rgba(34, 211, 238, 0.15);
+        }
+
+        .feature-card h3 {
+            font-size: 1.0625rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            letter-spacing: -0.2px;
+        }
+
+        .feature-card p {
+            font-size: 0.8475rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+        }
+
+        /* ── How It Works ── */
+        .how-section {
+            padding: 5rem 0;
+        }
+
+        .steps-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+        }
+
+        .step-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 1.75rem 1.25rem;
+            text-align: center;
+            position: relative;
+            transition: all 0.3s;
+        }
+
+        .step-card:hover {
+            background: var(--bg-card-hover);
+            transform: translateY(-3px);
+        }
+
+        .step-num {
+            width: 38px;
+            height: 38px;
+            border-radius: 50%;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 800;
+            color: #060911;
+            margin: 0 auto 1rem;
+        }
+
+        .step-card h3 {
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 0.4rem;
+        }
+
+        .step-card p {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            line-height: 1.5;
+        }
+
+        /* ── CTA ── */
+        .cta-section {
+            padding: 5rem 0 3rem;
+        }
+
+        .cta-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            text-align: center;
+            padding: 4rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .cta-card::before {
+            content: '';
+            position: absolute;
+            top: -100px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 500px;
+            height: 200px;
+            background: radial-gradient(ellipse, rgba(56, 189, 248, 0.08) 0%, transparent 70%);
+            pointer-events: none;
+        }
+
+        .cta-card h2 {
+            font-size: clamp(1.5rem, 3.5vw, 2.25rem);
+            font-weight: 800;
+            margin-bottom: 0.75rem;
+            letter-spacing: -0.5px;
+        }
+
+        .cta-card p {
+            font-size: 1.0625rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+            max-width: 460px;
+            margin-left: auto;
+            margin-right: auto;
+            line-height: 1.6;
+        }
+
+        /* ── Footer ── */
+        footer {
+            position: relative;
+            z-index: 10;
+            padding: 2rem 0;
+        }
+
+        .footer-inner {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem 2rem 1.5rem;
+        }
+
+        .footer-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1.5rem;
+            flex-wrap: wrap;
+            gap: 2rem;
+        }
+
+        .footer-brand h3 {
+            font-size: 1.125rem;
+            font-weight: 700;
+            margin-bottom: 0.3rem;
+        }
+
+        .footer-brand p {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            max-width: 280px;
+            line-height: 1.5;
+        }
+
+        .footer-links {
+            display: flex;
+            gap: 3rem;
+        }
+
+        .footer-col h4 {
+            font-size: 0.6875rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            color: var(--text-tertiary);
+            margin-bottom: 0.75rem;
+        }
+
+        .footer-col a {
+            display: block;
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.8125rem;
+            padding: 0.2rem 0;
+            transition: color 0.15s;
+        }
+
+        .footer-col a:hover {
+            color: var(--text-primary);
+        }
+
+        .footer-bottom {
+            padding-top: 1.25rem;
+            border-top: 1px solid var(--border);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            flex-wrap: wrap;
+            gap: 0.5rem;
+        }
+
+        .footer-tech {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .tech-tag {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 0.2rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.6875rem;
+            font-weight: 500;
+        }
+
+        /* ── Responsive ── */
+        @media (max-width: 768px) {
+            .features-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .steps-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .stats-bar {
+                grid-template-columns: 1fr;
+                gap: 1.5rem;
+            }
+
+            .stat-item:not(:last-child)::after {
+                display: none;
+            }
+
+            .nav-center {
+                display: none;
+            }
+
+            .footer-top {
+                flex-direction: column;
+            }
+
+            .footer-links {
+                flex-direction: column;
+                gap: 1.5rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .hero-actions {
+                flex-direction: column;
+                width: 100%;
+            }
+
+            .btn-primary,
+            .btn-secondary {
+                width: 100%;
+                text-align: center;
+                justify-content: center;
+            }
+
+            .steps-row {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── Scroll reveal ── */
+        .reveal {
+            opacity: 0;
+            transform: translateY(40px);
+        }
+
+        .reveal.revealed {
+            opacity: 1 !important;
+            transform: translateY(0) !important;
+        }
+
+        /* ── Format chips ── */
+        .formats-bar {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-top: 2rem;
+            animation: fadeUp 0.6s ease-out 0.45s backwards;
+        }
+
+        .formats-label {
+            font-size: 0.6875rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .format-chip {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 0.3rem 0.75rem;
+            border-radius: 8px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ambient"></div>
+
+    <!-- ── NAVBAR ── -->
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">
+            <div class="brand-mark">DP</div>
+            <span>DataPipe</span>
+        </a>
+        <div class="nav-center">
+            <a href="#features" class="nav-link">Features</a>
+            <a href="#how-it-works" class="nav-link">How It Works</a>
+            <a href="{{ url_for('demo_page') }}" class="nav-link">Demo</a>
+            <a href="{{ url_for('llm_page') }}" class="nav-link">LLM Pipeline</a>
+        </div>
+        <div class="nav-right">
+            <a href="{{ url_for('login') }}" class="nav-link">Sign In</a>
+            <a href="{{ url_for('signup') }}" class="btn-nav-signup">Get Started</a>
+        </div>
+    </nav>
+
+    <!-- ── HERO ── -->
+    <section class="hero">
+        <div class="hero-badge">
+            <span class="dot"></span>
+            Enterprise Data Intelligence
+        </div>
+        <h1>
+            Data clarity, built <span class="gradient">for</span><br>
+            <span class="gradient">the next generation.</span>
+        </h1>
+        <p class="hero-sub">
+            Real-time data cleaning, powerful ML analytics, and domain-specific LLM fine-tuning
+            — all in one secure platform.
+        </p>
+        <div class="hero-actions">
+            <a href="{{ url_for('signup') }}" class="btn-primary">Start Building Smarter</a>
+            <a href="#features" class="btn-secondary">Explore The Platform</a>
+        </div>
+        <div class="social-proof">
+            <div class="avatar-stack">
+                <span>👩‍💻</span>
+                <span>👨‍🔬</span>
+                <span>👩‍🎓</span>
+                <span>🧑‍💼</span>
+            </div>
+            <span class="social-proof-text">Trusted already by <strong>1.2k+</strong> users</span>
+        </div>
+        <div class="formats-bar">
+            <span class="formats-label">Supports</span>
+            <span class="format-chip">📄 CSV</span>
+            <span class="format-chip">📊 Excel</span>
+            <span class="format-chip">📑 PDF</span>
+            <span class="format-chip">🌐 URL</span>
+            <span class="format-chip">📝 Markdown</span>
+        </div>
+    </section>
+
+    <!-- ── STATS ── -->
+    <section class="stats-section">
+        <div class="container">
+            <div class="stats-bar reveal">
+                <div class="stat-item">
+                    <div class="stat-value">6</div>
+                    <div class="stat-caption">Pipeline Layers</div>
+                    <div class="stat-sub">End-to-end LLM prep</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">Real-time</div>
+                    <div class="stat-caption">Processing Speed</div>
+                    <div class="stat-sub">Instant data analysis</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-value">99%</div>
+                    <div class="stat-caption">System Reliability</div>
+                    <div class="stat-sub">Uptime you can count on</div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── FEATURES ── -->
+    <section class="features-section" id="features">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-eyebrow">Features</div>
+                <h2 class="section-title">Everything You Need, One Platform</h2>
+                <p class="section-desc">
+                    From raw datasets to fine-tuned LLMs — data cleaning, ML training, and LLM data preparation.
+                </p>
+            </div>
+            <div class="features-grid">
+                <div class="feature-card reveal">
+                    <div class="feature-icon fi-blue">🧹</div>
+                    <h3>Smart Data Cleaning</h3>
+                    <p>Automatically handles missing values, duplicates, outliers, and type fixing with intelligent
+                        strategies.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon fi-purple">📊</div>
+                    <h3>Exploratory Analysis</h3>
+                    <p>Generates correlation heatmaps, distribution plots, and surfaces key insights about your data
+                        instantly.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon fi-green">⚡</div>
+                    <h3>Feature Engineering</h3>
+                    <p>Auto-encodes categoricals, scales numerics, computes importance, and evolves features
+                        automatically.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon fi-pink">📥</div>
+                    <h3>Multi-Source Ingestion</h3>
+                    <p>Ingest PDFs, web pages, XML, JSON, Markdown, and text files. Unified document processing for LLM
+                        training.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon fi-amber">🧩</div>
+                    <h3>Domain-Aware Chunking</h3>
+                    <p>Sentence, paragraph, sliding window, and token-aware chunking. Formats to Alpaca, ChatML, or
+                        ShareGPT.</p>
+                </div>
+                <div class="feature-card reveal">
+                    <div class="feature-icon fi-cyan">🎯</div>
+                    <h3>Quality Scoring & Versioning</h3>
+                    <p>TF-IDF deduplication, toxicity filtering, quality metrics. Version datasets with diff and
+                        rollback support.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── HOW IT WORKS ── -->
+    <section class="how-section" id="how-it-works">
+        <div class="container">
+            <div class="section-header">
+                <div class="section-eyebrow">Workflow</div>
+                <h2 class="section-title">From Raw Data to Fine-Tuned Models</h2>
+                <p class="section-desc">A streamlined pipeline for both traditional ML and LLM fine-tuning.</p>
+            </div>
+            <div class="steps-row">
+                <div class="step-card reveal">
+                    <div class="step-num">1</div>
+                    <h3>Upload</h3>
+                    <p>Drop your CSV, Excel, PDF, or text files</p>
+                </div>
+                <div class="step-card reveal">
+                    <div class="step-num">2</div>
+                    <h3>Process</h3>
+                    <p>Clean, chunk, and format with intelligent defaults</p>
+                </div>
+                <div class="step-card reveal">
+                    <div class="step-num">3</div>
+                    <h3>Score</h3>
+                    <p>Quality scoring, dedup, and toxicity filtering</p>
+                </div>
+                <div class="step-card reveal">
+                    <div class="step-num">4</div>
+                    <h3>Export</h3>
+                    <p>Download JSONL, training config, and runnable scripts</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── CTA ── -->
+    <section class="cta-section">
+        <div class="container">
+            <div class="cta-card reveal">
+                <h2>Ready to Build Smarter?</h2>
+                <p>Create a free account and start processing datasets or preparing LLM training data in minutes.</p>
+                <div class="hero-actions" style="position: relative; z-index: 2;">
+                    <a href="{{ url_for('signup') }}" class="btn-primary">🚀 Create Free Account</a>
+                    <a href="{{ url_for('login') }}" class="btn-secondary">Sign In →</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- ── FOOTER ── -->
+    <footer>
+        <div class="container">
+            <div class="footer-inner">
+                <div class="footer-top">
+                    <div class="footer-brand">
+                        <h3>🔬 DataPipe</h3>
+                        <p>Automated data cleaning, LLM fine-tuning prep, and ML feature engineering for your projects.
+                        </p>
+                    </div>
+                    <div class="footer-links">
+                        <div class="footer-col">
+                            <h4>Product</h4>
+                            <a href="#features">Features</a>
+                            <a href="#how-it-works">How It Works</a>
+                            <a href="{{ url_for('llm_page') }}">LLM Pipeline</a>
+                            <a href="{{ url_for('signup') }}">Get Started</a>
+                        </div>
+                        <div class="footer-col">
+                            <h4>Tech Stack</h4>
+                            <a href="#">Python & Flask</a>
+                            <a href="#">Pandas & NumPy</a>
+                            <a href="#">Scikit-learn</a>
+                            <a href="#">HuggingFace TRL</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="footer-bottom">
+                    <span>© 2026 DataPipe — Enterprise Data Intelligence</span>
+                    <div class="footer-tech">
+                        <span class="tech-tag">Flask</span>
+                        <span class="tech-tag">Pandas</span>
+                        <span class="tech-tag">Scikit-learn</span>
+                        <span class="tech-tag">LoRA</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script>
+        /* ── Scroll reveal ── */
+        const revealObserver = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.classList.add('revealed');
+                    revealObserver.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.08, rootMargin: '0px 0px -40px 0px' });
+
+        document.querySelectorAll('.reveal').forEach((el, i) => {
+            el.style.transition = `opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.06}s, transform 0.7s cubic-bezier(0.16, 1, 0.3, 1) ${i * 0.06}s`;
+            revealObserver.observe(el);
+        });
+
+        /* ── Smooth scrolling ── */
+        document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+            anchor.addEventListener('click', function (e) {
+                e.preventDefault();
+                const targetId = this.getAttribute('href');
+                if (targetId === '#') return;
+                const target = document.querySelector(targetId);
+                if (!target) return;
+                const offset = 80;
+                const pos = target.getBoundingClientRect().top + window.pageYOffset - offset;
+                window.scrollTo({ top: pos, behavior: 'smooth' });
+            });
+        });
+    </script>
+</body>
+
+</html>

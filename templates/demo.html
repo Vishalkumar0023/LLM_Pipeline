@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Demo — DataPipe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-deep: #060911;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.07);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(56, 189, 248, 0.2);
+            --text-primary: #f0f2f5;
+            --text-secondary: rgba(255, 255, 255, 0.55);
+            --text-tertiary: rgba(255, 255, 255, 0.3);
+            --accent: #38bdf8;
+            --success: #34d399;
+            --gradient-primary: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+            --radius: 20px;
+            --radius-sm: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        /* ── Ambient Background ── */
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 40% at 80% 50%, rgba(129, 140, 248, 0.04) 0%, transparent 50%),
+                radial-gradient(ellipse 60% 50% at 20% 80%, rgba(192, 132, 252, 0.04) 0%, transparent 50%);
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 0 2rem;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(6, 9, 17, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .navbar-brand {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-mark {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 800;
+            color: #060911;
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.875rem;
+            font-weight: 600;
+            transition: color 0.2s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+        }
+
+        /* ── Main Container ── */
+        .container {
+            position: relative;
+            z-index: 10;
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 6rem 1.5rem 2rem;
+        }
+
+        .page-title {
+            text-align: center;
+            margin-bottom: 2.5rem;
+            animation: slideUp 0.5s ease-out backwards;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .page-title h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            letter-spacing: -1px;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #fff, var(--text-secondary));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .page-title p {
+            color: var(--text-secondary);
+            font-size: 1.125rem;
+        }
+
+        /* ── Tabs ── */
+        .tabs {
+            display: flex;
+            justify-content: center;
+            gap: 0.75rem;
+            margin-bottom: 2rem;
+            animation: slideUp 0.5s ease-out 0.1s backwards;
+        }
+
+        .tab-btn {
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            border: 1px solid var(--border);
+            font-size: 0.9375rem;
+            font-weight: 600;
+            cursor: pointer;
+            background: var(--bg-card);
+            color: var(--text-secondary);
+            transition: all 0.2s;
+            font-family: inherit;
+        }
+
+        .tab-btn.active {
+            background: rgba(56, 189, 248, 0.1);
+            color: var(--accent);
+            border-color: rgba(56, 189, 248, 0.3);
+            box-shadow: 0 0 20px rgba(56, 189, 248, 0.1);
+        }
+
+        .tab-btn:hover:not(.active) {
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text-primary);
+        }
+
+        /* ── Content Grid ── */
+        .demo-content {
+            display: none;
+            grid-template-columns: 1fr 1fr;
+            gap: 1.5rem;
+            animation: slideUp 0.5s ease-out 0.2s backwards;
+        }
+
+        .demo-content.active {
+            display: grid;
+        }
+
+        @media(max-width: 768px) {
+            .demo-content {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ── Cards ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            padding: 2rem;
+            backdrop-filter: blur(20px);
+        }
+
+        .card h3 {
+            font-size: 1.25rem;
+            font-weight: 700;
+            margin-bottom: 1.5rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        /* ── Forms ── */
+        .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .form-control {
+            width: 100%;
+            padding: 0.75rem 1rem;
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            font-family: inherit;
+            font-size: 0.9375rem;
+            transition: all 0.2s;
+        }
+
+        .form-control:focus {
+            outline: none;
+            border-color: rgba(56, 189, 248, 0.4);
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        .form-control option {
+            background: #0f172a;
+            color: #fff;
+        }
+
+        input[type="range"] {
+            -webkit-appearance: none;
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            border: none;
+            margin: 10px 0;
+            padding: 0;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: var(--accent);
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(56, 189, 248, 0.5);
+            transition: transform 0.1s;
+        }
+
+        input[type="range"]::-webkit-slider-thumb:active {
+            transform: scale(1.1);
+        }
+
+        .range-val {
+            text-align: right;
+            font-weight: 700;
+            font-size: 1.125rem;
+            color: var(--text-primary);
+            margin-top: 0.25rem;
+        }
+
+        /* ── Button ── */
+        .btn-predict {
+            width: 100%;
+            padding: 1rem;
+            border-radius: var(--radius-sm);
+            border: none;
+            background: var(--gradient-primary);
+            color: #060911;
+            font-size: 1rem;
+            font-weight: 800;
+            cursor: pointer;
+            transition: all 0.2s;
+            margin-top: 1.5rem;
+            box-shadow: 0 4px 15px rgba(56, 189, 248, 0.2);
+        }
+
+        .btn-predict:active {
+            transform: translateY(2px);
+            box-shadow: 0 2px 5px rgba(56, 189, 248, 0.2);
+        }
+
+        .btn-predict:hover {
+            box-shadow: 0 6px 20px rgba(56, 189, 248, 0.4);
+        }
+
+        /* ── Result Box ── */
+        .result-box {
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            margin-bottom: 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .result-box::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 2px;
+            background: var(--gradient-primary);
+            opacity: 0.5;
+        }
+
+        .result-label {
+            color: var(--text-secondary);
+            font-size: 0.8125rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .result-value {
+            font-size: 3rem;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin: 0.5rem 0;
+            line-height: 1.1;
+        }
+
+        .chart-container {
+            position: relative;
+            height: 220px;
+            width: 100%;
+        }
+
+        /* ── Auth Prompt ── */
+        .auth-prompt {
+            text-align: center;
+            padding: 3rem 2rem;
+        }
+
+        .auth-prompt h3 {
+            justify-content: center;
+            margin-bottom: 1rem;
+        }
+
+        .auth-prompt p {
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+        }
+
+        .btn-outline {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.75rem 1.5rem;
+            border-radius: 50px;
+            border: 1px solid var(--border);
+            background: rgba(255, 255, 255, 0.05);
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+
+        .btn-outline:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: rgba(255, 255, 255, 0.2);
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ambient"></div>
+
+    <nav class="navbar">
+        <a href="/" class="navbar-brand">
+            <div class="brand-mark">DP</div>
+            <span>DataPipe</span>
+        </a>
+        <div class="nav-actions">
+            <a href="/" class="nav-link">Home</a>
+            {% if user %}
+            <a href="/dashboard" class="nav-link">Dashboard</a>
+            {% else %}
+            <a href="/login" class="nav-link">Sign In</a>
+            {% endif %}
+        </div>
+    </nav>
+
+    <div class="container">
+        <div class="page-title">
+            <h1>Live Prediction Demo</h1>
+            <p>See our ML models in action across different industries</p>
+        </div>
+
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('sales')">💰 Retail Sales</button>
+            <button class="tab-btn" onclick="switchTab('student')">🎓 Education</button>
+            <button class="tab-btn" onclick="switchTab('user')">👤 My Models</button>
+        </div>
+
+        <!-- Sales Demo -->
+        <div id="sales-demo" class="demo-content active">
+            <div class="card">
+                <h3>⚙️ Input Parameters</h3>
+                <div class="form-group">
+                    <label>TV Ad Budget ($k)</label>
+                    <input type="range" id="tv_ad" min="0" max="300" value="150"
+                        oninput="updateVal('tv_val', this.value)">
+                    <div class="range-val" id="tv_val">150</div>
+                </div>
+                <div class="form-group">
+                    <label>Radio Ad Budget ($k)</label>
+                    <input type="range" id="radio_ad" min="0" max="50" value="25"
+                        oninput="updateVal('radio_val', this.value)">
+                    <div class="range-val" id="radio_val">25</div>
+                </div>
+                <div class="form-group">
+                    <label>Newspaper Ad Budget ($k)</label>
+                    <input type="range" id="news_ad" min="0" max="100" value="50"
+                        oninput="updateVal('news_val', this.value)">
+                    <div class="range-val" id="news_val">50</div>
+                </div>
+                <button class="btn-predict" onclick="predictSales()">Predict Sales Revenue</button>
+            </div>
+
+            <div class="card">
+                <h3>📈 Prediction Result</h3>
+                <div class="result-box">
+                    <div class="result-label">Projected Sales</div>
+                    <div class="result-value" id="sales-result">--</div>
+                    <div class="result-label">Units (Thousands)</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="salesChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Student Demo -->
+        <div id="student-demo" class="demo-content">
+            <div class="card">
+                <h3>⚙️ Student Metrics</h3>
+                <div class="form-group">
+                    <label>Study Hours (Weekly)</label>
+                    <input type="range" id="study_hours" min="0" max="20" step="0.5" value="5"
+                        oninput="updateVal('study_val', this.value)">
+                    <div class="range-val" id="study_val">5</div>
+                </div>
+                <div class="form-group">
+                    <label>Attendance (%)</label>
+                    <input type="range" id="attendance" min="0" max="100" value="75"
+                        oninput="updateVal('att_val', this.value)">
+                    <div class="range-val" id="att_val">75</div>
+                </div>
+                <div class="form-group">
+                    <label>Previous Score</label>
+                    <input type="number" id="prev_score" class="form-control" value="70" min="0" max="100">
+                </div>
+                <button class="btn-predict" onclick="predictStudent()">Predict Final Grade</button>
+            </div>
+
+            <div class="card">
+                <h3>📈 Prediction Result</h3>
+                <div class="result-box">
+                    <div class="result-label">Projected Grade</div>
+                    <div class="result-value" id="student-result">--</div>
+                    <div class="result-label">Score (0-100)</div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="studentChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- User Models Demo -->
+        {% if user %}
+        <div id="user-demo" class="demo-content">
+            <div class="card">
+                <h3>🧠 My Models</h3>
+
+                {% if not user_models and not untrained_datasets %}
+                <div class="auth-prompt">
+                    <p>You haven't uploaded any data yet.</p>
+                    <a href="/dashboard" class="btn-outline">Go to Dashboard</a>
+                </div>
+                {% else %}
+                <div class="form-group">
+                    <label>Select Trained Model</label>
+                    <select id="user_model_select" class="form-control" onchange="loadUserModel(this.value)">
+                        <option value="">-- Choose a model to predict --</option>
+                        {% for m in user_models %}
+                        <option value="{{ m.id }}">{{ m.name }} (Target: {{ m.target }})</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                {% if untrained_datasets %}
+                <div style="margin-top: 1.5rem; padding-top: 1.5rem; border-top: 1px solid var(--border);">
+                    <label style="font-size: 0.8125rem; color: var(--text-tertiary);">Uploaded but not
+                        trained:</label>
+                    <ul style="list-style: none; padding: 0; margin-top: 0.75rem;">
+                        {% for d in untrained_datasets %}
+                        <li
+                            style="margin-bottom: 0.5rem; font-size: 0.875rem; display: flex; justify-content: space-between; align-items: center; background: rgba(255,255,255,0.02); padding: 0.5rem 1rem; border-radius: 8px;">
+                            <span style="color: var(--text-secondary);">{{ d.name }}</span>
+                            <a href="/dashboard"
+                                style="color: var(--accent); text-decoration: none; font-weight: 600; font-size: 0.8125rem;">Train
+                                →</a>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                </div>
+                {% endif %}
+
+                <div id="user_model_inputs" style="margin-top: 2rem;">
+                    <!-- Dynamic inputs will appear here -->
+                    {% if not user_models %}
+                    <p
+                        style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem; text-align: center;">
+                        No trained models available.</p>
+                    {% else %}
+                    <p
+                        style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem; text-align: center;">
+                        Select a model above to load inputs.</p>
+                    {% endif %}
+                </div>
+
+                <button id="user_predict_btn" class="btn-predict" onclick="predictUserModel()"
+                    style="display: none;">Generate Prediction</button>
+                {% endif %}
+            </div>
+
+            <div class="card">
+                <h3>🎯 Prediction Result</h3>
+                <div class="result-box">
+                    <div class="result-label">Predicted Value</div>
+                    <div class="result-value" id="user-result">--</div>
+                    <div class="result-label" id="user-target-label">Target</div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div id="user-demo" class="demo-content">
+            <div class="card auth-prompt" style="grid-column: span 2;">
+                <h3>🔒 My Models</h3>
+                <p>Sign in to test your own custom trained models.</p>
+                <a href="/login" class="btn-outline">Sign In</a>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+
+    <script>
+        // Charts config
+        Chart.defaults.color = 'rgba(255, 255, 255, 0.55)';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+
+        // Charts
+        let salesChart, studentChart;
+
+        function initCharts() {
+            const ctxSales = document.getElementById('salesChart').getContext('2d');
+            salesChart = new Chart(ctxSales, {
+                type: 'bar',
+                data: {
+                    labels: ['Target', 'Prediction'],
+                    datasets: [{
+                        label: 'Sales',
+                        data: [25, 0],
+                        backgroundColor: ['rgba(255, 255, 255, 0.1)', '#38bdf8'],
+                        borderWidth: 0,
+                        borderRadius: 6
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } },
+                        x: { grid: { display: false, drawBorder: false } }
+                    }
+                }
+            });
+
+            const ctxStudent = document.getElementById('studentChart').getContext('2d');
+            studentChart = new Chart(ctxStudent, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Grade', 'Remaining'],
+                    datasets: [{
+                        data: [0, 100],
+                        backgroundColor: ['#34d399', 'rgba(255, 255, 255, 0.05)'],
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    cutout: '75%',
+                    plugins: { legend: { display: false } }
+                }
+            });
+        }
+
+        // Logic
+        function switchTab(tab) {
+            document.querySelectorAll('.demo-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab + '-demo').classList.add('active');
+            event.target.classList.add('active');
+        }
+
+        function updateVal(id, val) {
+            document.getElementById(id).innerText = val;
+        }
+
+        // API Calls
+        async function predictSales() {
+            const tv = parseFloat(document.getElementById('tv_ad').value);
+            const radio = parseFloat(document.getElementById('radio_ad').value);
+            const news = parseFloat(document.getElementById('news_ad').value);
+
+            try {
+                const res = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_type: 'sales',
+                        features: { 'TV_Ad_Budget': tv, 'Radio_Ad_Budget': radio, 'Newspaper_Ad_Budget': news }
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const pred = data.prediction.toFixed(2);
+                    document.getElementById('sales-result').innerText = pred;
+                    salesChart.data.datasets[0].data[1] = data.prediction;
+                    salesChart.update();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) { console.error(e); alert('Prediction failed'); }
+        }
+
+        async function predictStudent() {
+            const hours = parseFloat(document.getElementById('study_hours').value);
+            const att = parseFloat(document.getElementById('attendance').value);
+            const prev = parseFloat(document.getElementById('prev_score').value);
+
+            try {
+                const res = await fetch('/api/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        model_type: 'student',
+                        features: { 'Study_Hours': hours, 'Attendance_Percentage': att, 'Previous_Score': prev }
+                    })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    const pred = Math.min(100, Math.max(0, data.prediction)).toFixed(1);
+                    document.getElementById('student-result').innerText = pred;
+                    studentChart.data.datasets[0].data = [pred, 100 - pred];
+                    studentChart.update();
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) { console.error(e); alert('Prediction failed'); }
+        }
+
+        // User Model Logic
+        let currentUserModelFeatures = [];
+
+        async function loadUserModel(datasetId) {
+            if (!datasetId) {
+                document.getElementById('user_model_inputs').innerHTML = '<p style="color: var(--text-tertiary); font-style: italic; font-size: 0.875rem; text-align: center;">Select a model to see inputs.</p>';
+                document.getElementById('user_predict_btn').style.display = 'none';
+                return;
+            }
+
+            try {
+                const res = await fetch(`/api/user_model_info/${datasetId}`);
+                if (!res.ok) throw new Error('Failed to load model info');
+
+                const data = await res.json();
+                if (data.success) {
+                    currentUserModelFeatures = data.features;
+                    document.getElementById('user-target-label').innerText = data.target || 'Target';
+                    generateForm(data.features);
+                    document.getElementById('user_predict_btn').style.display = 'block';
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Error loading model info');
+            }
+        }
+
+        function generateForm(features) {
+            const container = document.getElementById('user_model_inputs');
+            container.innerHTML = '<h4 style="margin-bottom:1rem;font-size:0.9375rem;color:var(--text-primary);">Feature Inputs</h4>';
+
+            features.forEach(feature => {
+                const div = document.createElement('div');
+                div.className = 'form-group';
+                div.innerHTML = `
+                    <label>${feature}</label>
+                    <input type="number" step="any" class="form-control user-feature-input" data-feature="${feature}" placeholder="Enter value">
+                `;
+                container.appendChild(div);
+            });
+        }
+
+        async function predictUserModel() {
+            const datasetId = document.getElementById('user_model_select').value;
+            const inputs = document.querySelectorAll('.user-feature-input');
+            const features = {};
+
+            inputs.forEach(input => {
+                features[input.dataset.feature] = parseFloat(input.value) || 0;
+            });
+
+            const btn = document.getElementById('user_predict_btn');
+            btn.innerHTML = 'Predicting...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/predict_user_model', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        dataset_id: datasetId,
+                        features: features
+                    })
+                });
+
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('user-result').innerText = data.prediction.toFixed(4);
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (e) {
+                console.error(e);
+                alert('Prediction failed');
+            } finally {
+                btn.innerHTML = 'Generate Prediction';
+                btn.disabled = false;
+            }
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', () => {
+            initCharts();
+        });
+    </script>
+</body>
+
+</html>

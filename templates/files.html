@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>File Manager — DataPipe</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap"
+        rel="stylesheet">
+    <style>
+        :root {
+            --bg-deep: #060911;
+            --bg-card: rgba(255, 255, 255, 0.04);
+            --bg-card-hover: rgba(255, 255, 255, 0.07);
+            --border: rgba(255, 255, 255, 0.08);
+            --border-glow: rgba(56, 189, 248, 0.2);
+            --text-primary: #f0f2f5;
+            --text-secondary: rgba(255, 255, 255, 0.55);
+            --text-tertiary: rgba(255, 255, 255, 0.3);
+            --accent: #38bdf8;
+            --danger: #f87171;
+            --gradient-primary: linear-gradient(135deg, #38bdf8 0%, #818cf8 50%, #c084fc 100%);
+            --radius: 20px;
+            --radius-sm: 12px;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, sans-serif;
+            background: var(--bg-deep);
+            color: var(--text-primary);
+            -webkit-font-smoothing: antialiased;
+            min-height: 100vh;
+        }
+
+        /* ── Ambient Background ── */
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: 0;
+            pointer-events: none;
+            background:
+                radial-gradient(ellipse 80% 60% at 50% -10%, rgba(56, 189, 248, 0.08) 0%, transparent 60%),
+                radial-gradient(ellipse 50% 40% at 80% 50%, rgba(129, 140, 248, 0.04) 0%, transparent 50%);
+        }
+
+        /* ── Navbar ── */
+        .navbar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            padding: 0 2rem;
+            height: 64px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            background: rgba(6, 9, 17, 0.85);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border);
+        }
+
+        .navbar-brand {
+            font-size: 1.125rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .brand-mark {
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: var(--gradient-primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.875rem;
+            font-weight: 800;
+            color: #060911;
+        }
+
+        .nav-actions {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .nav-link {
+            color: var(--text-secondary);
+            text-decoration: none;
+            font-size: 0.8125rem;
+            font-weight: 600;
+            padding: 0.4rem 0.875rem;
+            border-radius: 8px;
+            transition: all 0.2s;
+        }
+
+        .nav-link:hover {
+            color: var(--text-primary);
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        /* ── Main ── */
+        .main-content {
+            position: relative;
+            z-index: 10;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 6rem 1.5rem 2rem;
+        }
+
+        .page-header {
+            margin-bottom: 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-end;
+            animation: slideUp 0.5s ease-out backwards;
+        }
+
+        @keyframes slideUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .page-title {
+            font-size: 2rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin-bottom: 0.25rem;
+        }
+
+        .page-subtitle {
+            color: var(--text-secondary);
+            font-size: 0.9375rem;
+        }
+
+        /* ── Glass Card ── */
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            overflow: hidden;
+            animation: slideUp 0.5s ease-out 0.1s backwards;
+        }
+
+        /* ── Table ── */
+        .table-wrap {
+            width: 100%;
+            overflow-x: auto;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.875rem;
+            text-align: left;
+        }
+
+        th,
+        td {
+            padding: 1rem 1.25rem;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            font-size: 0.6875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: var(--text-tertiary);
+            font-weight: 700;
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        tr:hover td {
+            background: rgba(255, 255, 255, 0.03);
+        }
+
+        .checkbox-cell {
+            width: 48px;
+            text-align: center;
+        }
+
+        input[type="checkbox"] {
+            appearance: none;
+            -webkit-appearance: none;
+            width: 18px;
+            height: 18px;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: rgba(255, 255, 255, 0.05);
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        input[type="checkbox"]:checked {
+            background: var(--accent);
+            border-color: var(--accent);
+        }
+
+        input[type="checkbox"]:checked::after {
+            content: '';
+            position: absolute;
+            left: 5px;
+            top: 2px;
+            width: 4px;
+            height: 8px;
+            border: solid #060911;
+            border-width: 0 2px 2px 0;
+            transform: rotate(45deg);
+        }
+
+        .file-icon {
+            margin-right: 0.75rem;
+            font-size: 1.125rem;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 32px;
+            height: 32px;
+            border-radius: 8px;
+            background: rgba(56, 189, 248, 0.1);
+            border: 1px solid rgba(56, 189, 248, 0.15);
+        }
+
+        .file-icon.model {
+            background: rgba(192, 132, 252, 0.1);
+            border-color: rgba(192, 132, 252, 0.15);
+        }
+
+        .file-name {
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .file-meta {
+            color: var(--text-secondary);
+            font-size: 0.8125rem;
+        }
+
+        /* ── Buttons ── */
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.5rem 1rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border);
+            background: var(--bg-card);
+            font-size: 0.8125rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:active {
+            transform: scale(0.96);
+        }
+
+        .btn:hover {
+            background: var(--bg-card-hover);
+            border-color: rgba(255, 255, 255, 0.15);
+        }
+
+        .btn-danger {
+            background: rgba(248, 113, 113, 0.1);
+            border-color: rgba(248, 113, 113, 0.2);
+            color: var(--danger);
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: rgba(248, 113, 113, 0.15);
+            border-color: rgba(248, 113, 113, 0.3);
+            color: #fca5a5;
+        }
+
+        .btn:disabled {
+            opacity: 0.4;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        /* ── States ── */
+        #loader {
+            text-align: center;
+            padding: 3rem;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+        }
+
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--border);
+            border-top-color: var(--accent);
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin: 0 auto 1rem;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        #empty-state {
+            text-align: center;
+            padding: 4rem 2rem;
+            display: none;
+        }
+
+        .empty-icon {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="ambient"></div>
+
+    <nav class="navbar">
+        <a href="{{ url_for('index') }}" class="navbar-brand">
+            <div class="brand-mark">DP</div>
+            <span>DataPipe</span>
+        </a>
+        <div class="nav-actions">
+            <a href="{{ url_for('dashboard') }}" class="nav-link">📊 Dashboard</a>
+        </div>
+    </nav>
+
+    <div class="main-content">
+        <div class="page-header">
+            <div>
+                <h1 class="page-title">File Manager</h1>
+                <p class="page-subtitle">Manage your datasets, exports, and trained models</p>
+            </div>
+            <button class="btn btn-danger" onclick="deleteSelected()" id="delete-btn" disabled>
+                🗑️ Delete Selected
+            </button>
+        </div>
+
+        <div class="card">
+            <div class="table-wrap">
+                <table id="file-table" style="display:none;">
+                    <thead>
+                        <tr>
+                            <th class="checkbox-cell"><input type="checkbox" id="select-all" onclick="toggleAll(this)">
+                            </th>
+                            <th>Name</th>
+                            <th>Type</th>
+                            <th>Size</th>
+                            <th>Date Modified</th>
+                        </tr>
+                    </thead>
+                    <tbody id="file-list">
+                        <!-- Filled by JS -->
+                    </tbody>
+                </table>
+            </div>
+            <div id="loader">
+                <div class="spinner"></div>
+                Loading files...
+            </div>
+            <div id="empty-state">
+                <div class="empty-icon">📂</div>
+                <p style="color:var(--text-secondary)">No files found. Upload data in the Dashboard or LLM Pipeline.</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Format Bytes
+        function formatBytes(bytes, decimals = 2) {
+            if (!+bytes) return '0 Bytes';
+            const k = 1024;
+            const dm = decimals < 0 ? 0 : decimals;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return `${parseFloat((bytes / Math.pow(k, i)).toFixed(dm))} ${sizes[i]}`;
+        }
+
+        // Format Date
+        function formatDate(isoString) {
+            const date = new Date(isoString);
+            return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        }
+
+        let files = [];
+
+        // Load Files
+        async function loadFiles() {
+            const loader = document.getElementById('loader');
+            const list = document.getElementById('file-list');
+            const empty = document.getElementById('empty-state');
+            const table = document.getElementById('file-table');
+
+            try {
+                const res = await fetch('/api/user_files');
+                files = await res.json();
+
+                loader.style.display = 'none';
+                list.innerHTML = '';
+
+                if (files.length === 0) {
+                    empty.style.display = 'block';
+                    table.style.display = 'none';
+                    return;
+                }
+
+                table.style.display = 'table';
+                empty.style.display = 'none';
+
+                files.forEach(file => {
+                    const isModel = file.name.endsWith('.pkl');
+                    const icon = isModel ? '🧠' : '📄';
+                    const iconClass = isModel ? 'file-icon model' : 'file-icon';
+
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td class="checkbox-cell"><input type="checkbox" class="file-check" value="${file.name}" onchange="updateDeleteBtn()"></td>
+                        <td>
+                            <div style="display:flex;align-items:center;">
+                                <span class="${iconClass}">${icon}</span>
+                                <span class="file-name">${file.name}</span>
+                            </div>
+                        </td>
+                        <td class="file-meta" style="text-transform:uppercase;font-size:0.6875rem;font-weight:600;letter-spacing:0.5px;">${file.type || file.name.split('.').pop()}</td>
+                        <td class="file-meta">${formatBytes(file.size)}</td>
+                        <td class="file-meta">${formatDate(file.date)}</td>
+                    `;
+                    list.appendChild(row);
+                });
+            } catch (err) {
+                console.error(err);
+                loader.innerHTML = '<span style="color:var(--danger)">⚠️ Error loading files</span>';
+            }
+        }
+
+        // Select All
+        function toggleAll(source) {
+            const checkboxes = document.querySelectorAll('.file-check');
+            checkboxes.forEach(cb => cb.checked = source.checked);
+            updateDeleteBtn();
+        }
+
+        // Update Delete Button State
+        function updateDeleteBtn() {
+            const checked = document.querySelectorAll('.file-check:checked');
+            const btn = document.getElementById('delete-btn');
+            btn.disabled = checked.length === 0;
+            btn.innerHTML = checked.length > 0 ? `🗑️ Delete Selected (${checked.length})` : '🗑️ Delete Selected';
+        }
+
+        // Delete Selected
+        async function deleteSelected() {
+            const checked = document.querySelectorAll('.file-check:checked');
+            if (checked.length === 0) return;
+
+            if (!confirm(`Are you sure you want to delete ${checked.length} file(s)? This cannot be undone.`)) return;
+
+            const filenames = Array.from(checked).map(cb => cb.value);
+            const btn = document.getElementById('delete-btn');
+            btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;margin:0 0.5rem 0 0;border-width:2px;"></div> Deleting...';
+            btn.disabled = true;
+
+            try {
+                const res = await fetch('/api/delete_files', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ filenames })
+                });
+
+                const result = await res.json();
+
+                if (result.errors && result.errors.length > 0) {
+                    alert('Partial success:\n' + result.errors.join('\n'));
+                }
+
+                await loadFiles();
+                document.getElementById('select-all').checked = false;
+                updateDeleteBtn();
+
+            } catch (err) {
+                alert('Error deleting files: ' + err);
+                btn.disabled = false;
+                updateDeleteBtn();
+            }
+        }
+
+        // Init
+        document.addEventListener('DOMContentLoaded', loadFiles);
+    </script>
+</body>
+
+</html>
