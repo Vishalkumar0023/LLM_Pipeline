@@ -3,6 +3,7 @@ import pandas as pd
 import sys
 import os
 
+
 def load_and_predict(model_path, csv_data_path=None):
     """
     Loads a model from a .pkl file and makes predictions.
@@ -22,30 +23,33 @@ def load_and_predict(model_path, csv_data_path=None):
 
     if csv_data_path:
         if not os.path.exists(csv_data_path):
-             print(f"Error: Data file '{csv_data_path}' not found.")
-             return
-        
+            print(f"Error: Data file '{csv_data_path}' not found.")
+            return
+
         print(f"Loading data from {csv_data_path}...")
         try:
             data = pd.read_csv(csv_data_path)
-            # Basic check: The model usually expects specific features. 
+            # Basic check: The model usually expects specific features.
             # This try/except block handles shape mismatches generally.
             predictions = model.predict(data)
             print("\n🔮 Predictions:")
             print(predictions)
-            
+
             # Save predictions
             output_file = "predictions.csv"
-            data['prediction'] = predictions
+            data["prediction"] = predictions
             data.to_csv(output_file, index=False)
             print(f"\n✅ Predictions saved to {output_file}")
-            
+
         except Exception as e:
-             print(f"❌ Error during prediction: {e}")
-             print("Tip: Ensure your input CSV has the same columns (features) as the data used to train the model.")
+            print(f"❌ Error during prediction: {e}")
+            print(
+                "Tip: Ensure your input CSV has the same columns (features) as the data used to train the model."
+            )
     else:
         print("\nℹ️  To make predictions, provide a CSV file with features:")
         print(f"python {sys.argv[0]} {model_path} your_new_data.csv")
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

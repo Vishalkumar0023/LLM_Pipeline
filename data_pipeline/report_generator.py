@@ -1,13 +1,12 @@
-import pandas as pd
 from datetime import datetime
-import json
+
 
 class ReportGenerator:
     """
     Generates a detailed, long-form HTML report suitable for hackathon presentations.
     Target length: ~2000 words including boilerplate educational content.
     """
-    
+
     def __init__(self, pipeline, model_results):
         self.pipeline = pipeline
         self.results = model_results
@@ -16,7 +15,7 @@ class ReportGenerator:
         self.final_df = pipeline.final_df
         self.target_col = pipeline.target_col
         self.problem_type = pipeline.problem_type
-        
+
         # Styles for the report
         self.css = """
         <style>
@@ -98,23 +97,23 @@ class ReportGenerator:
     def generate_html(self) -> str:
         """Construct the full HTML report."""
         timestamp = datetime.now().strftime("%B %d, %Y")
-        dataset_name = "Dataset Analysis Report" # Could potentially get from pipeline if available
-        
+        dataset_name = "Dataset Analysis Report"  # Could potentially get from pipeline if available
+
         sections = [
             self._get_header(timestamp),
             self._get_executive_summary(),
             '<div class="page-break"></div>',
             self._get_methodology(),
-             '<div class="page-break"></div>',
+            '<div class="page-break"></div>',
             self._get_data_profiling(),
-             '<div class="page-break"></div>',
+            '<div class="page-break"></div>',
             self._get_model_architecture(),
-             '<div class="page-break"></div>',
+            '<div class="page-break"></div>',
             self._get_results_evaluation(),
-             '<div class="page-break"></div>',
-            self._get_future_work()
+            '<div class="page-break"></div>',
+            self._get_future_work(),
         ]
-        
+
         return f"""
         <!DOCTYPE html>
         <html>
@@ -123,7 +122,7 @@ class ReportGenerator:
             {self.css}
         </head>
         <body>
-            {''.join(sections)}
+            {"".join(sections)}
         </body>
         </html>
         """
@@ -154,16 +153,16 @@ class ReportGenerator:
     def _get_executive_summary(self):
         # Auto-detect improvement
         try:
-             imp = self.results['comparison']['improvement_pct']
-             status = "significant" if imp > 10 else "moderate"
-             direction = "improvement" if imp > 0 else "change"
+            imp = self.results["comparison"]["improvement_pct"]
+            status = "significant" if imp > 10 else "moderate"
+            direction = "improvement" if imp > 0 else "change"
         except:
-             imp = 0
-             status = "documented"
-             direction = "performance"
-             
+            imp = 0
+            status = "documented"
+            direction = "performance"
+
         target = self.target_col or "the target variable"
-        
+
         return f"""
         <h2 id="exec-summary">1. Executive Summary</h2>
         <p>
@@ -215,10 +214,14 @@ class ReportGenerator:
         n_raw = len(self.raw_df) if self.raw_df is not None else 0
         n_clean = len(self.cleaned_df) if self.cleaned_df is not None else 0
         n_cols_raw = len(self.raw_df.columns) if self.raw_df is not None else 0
-        n_cols_clean = len(self.cleaned_df.columns) if self.cleaned_df is not None else 0
-        
-        missing_handled = "Missing values were detected and imputed." # Simplified logic for report
-        
+        n_cols_clean = (
+            len(self.cleaned_df.columns) if self.cleaned_df is not None else 0
+        )
+
+        missing_handled = (
+            "Missing values were detected and imputed."  # Simplified logic for report
+        )
+
         return f"""
         <h2 id="data-profile">3. Data Profiling and Transformation</h2>
         <p>
@@ -255,9 +258,9 @@ class ReportGenerator:
         """
 
     def _get_model_architecture(self):
-        model_type = self.results.get('model_type', 'Ensemble Model')
+        model_type = self.results.get("model_type", "Ensemble Model")
         problem = self.problem_type.title()
-        
+
         return f"""
         <h2 id="model-arch">4. Model Architecture and Configuration</h2>
         <p>
@@ -280,20 +283,20 @@ class ReportGenerator:
         """
 
     def _get_results_evaluation(self):
-        comp = self.results.get('comparison', {})
-        raw_score = comp.get('raw_score', 0)
-        clean_score = comp.get('cleaned_score', 0)
-        metric = comp.get('metric', 'Score')
-        
-        raw_rel = comp.get('raw_reliability', {})
-        raw_grade = raw_rel.get('grade', 'N/A')
-        raw_pts = raw_rel.get('score', 0)
-        
+        comp = self.results.get("comparison", {})
+        raw_score = comp.get("raw_score", 0)
+        clean_score = comp.get("cleaned_score", 0)
+        metric = comp.get("metric", "Score")
+
+        raw_rel = comp.get("raw_reliability", {})
+        raw_grade = raw_rel.get("grade", "N/A")
+        raw_pts = raw_rel.get("score", 0)
+
         # Determine reliability of cleaned model (approximated or fetched)
         # We'll use a placeholder logic that usually Cleaned is better or same
         clean_pts = min(100, raw_pts + 15) if clean_score > raw_score else raw_pts
-        clean_grade = 'A' if clean_pts >= 85 else 'B' if clean_pts >= 70 else 'C'
-        
+        clean_grade = "A" if clean_pts >= 85 else "B" if clean_pts >= 70 else "C"
+
         return f"""
         <h2 id="eval">5. Performance Evaluation and Reliability</h2>
         <p>

@@ -1,8 +1,8 @@
 """
 Data Pipeline Tool
 ==================
-A comprehensive, modular Python tool for automated data cleaning, 
-exploratory data analysis (EDA), feature engineering, and 
+A comprehensive, modular Python tool for automated data cleaning,
+exploratory data analysis (EDA), feature engineering, and
 enterprise LLM fine-tuning data preparation.
 
 Modules:
@@ -31,55 +31,89 @@ from .model_trainer import ModelTrainer
 # Use: from data_pipeline.pipeline import DataPipeline
 # Use: from data_pipeline.llm_pipeline import LLMPipeline
 
+
 def _get_pipeline():
     from .pipeline import DataPipeline as _DP
+
     return _DP
+
 
 # Make classes available but lazy
 import importlib
+
+
 def __getattr__(name):
     if name == "DataPipeline":
         return _get_pipeline()
     if name == "EDAAnalyzer":
         from .eda import EDAAnalyzer
+
         return EDAAnalyzer
     if name == "FeatureEngineer":
         from .feature_engineer import FeatureEngineer
+
         return FeatureEngineer
     # LLM Pipeline modules (lazy)
     if name == "LLMPipeline":
         from .llm_pipeline import LLMPipeline
+
         return LLMPipeline
     if name == "DocumentIngestor":
         from .document_ingestor import DocumentIngestor
+
         return DocumentIngestor
     if name == "TextChunker":
         from .text_chunker import TextChunker
+
         return TextChunker
     if name == "InstructFormatter":
         from .instruct_formatter import InstructFormatter
+
         return InstructFormatter
     if name == "QualityScorer":
         from .quality_scorer import QualityScorer
+
         return QualityScorer
     if name == "DatasetRegistry":
         from .dataset_registry import DatasetRegistry
+
         return DatasetRegistry
     if name == "FineTuneConfig":
         from .finetune_config import FineTuneConfig
+
         return FineTuneConfig
     if name == "LLMMonitor":
         from .llm_monitor import LLMMonitor
+
         return LLMMonitor
+    if name == "EcommerceScraper":
+        from .ecommerce_scraper import EcommerceScraper
+
+        return EcommerceScraper
+    if name == "EmbeddingEngine":
+        from .embedding_engine import EmbeddingEngine
+
+        return EmbeddingEngine
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
-__version__ = "2.0.0"
+
+__version__ = "2.1.0"
 __all__ = [
     # Original modules
-    "DataPipeline", "DataLoader", "DataCleaner",
-    "EDAAnalyzer", "FeatureEngineer", "ModelTrainer",
+    "DataPipeline",
+    "DataLoader",
+    "DataCleaner",
+    "EDAAnalyzer",
+    "FeatureEngineer",
+    "ModelTrainer",
     # LLM Pipeline modules
-    "LLMPipeline", "DocumentIngestor", "TextChunker",
-    "InstructFormatter", "QualityScorer", "DatasetRegistry",
-    "FineTuneConfig", "LLMMonitor",
+    "LLMPipeline",
+    "DocumentIngestor",
+    "TextChunker",
+    "InstructFormatter",
+    "QualityScorer",
+    "DatasetRegistry",
+    "FineTuneConfig",
+    "LLMMonitor",
+    "EcommerceScraper",
 ]

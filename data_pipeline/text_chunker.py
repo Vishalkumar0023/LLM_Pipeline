@@ -6,7 +6,7 @@ for LLM fine-tuning data preparation.
 """
 
 import re
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 
 
 class TextChunker:
@@ -26,17 +26,15 @@ class TextChunker:
     """
 
     # Regex for sentence boundary detection
-    SENTENCE_BOUNDARY = re.compile(
-        r'(?<=[.!?])\s+(?=[A-Z])|(?<=[.!?])\s*\n'
-    )
+    SENTENCE_BOUNDARY = re.compile(r"(?<=[.!?])\s+(?=[A-Z])|(?<=[.!?])\s*\n")
 
     def __init__(
         self,
-        method: str = 'paragraph',
+        method: str = "paragraph",
         chunk_size: int = 512,
         overlap: int = 64,
         min_chunk_size: int = 50,
-        max_chunk_size: int = 2048
+        max_chunk_size: int = 2048,
     ):
         """
         Initialize the chunker.
@@ -54,11 +52,15 @@ class TextChunker:
         max_chunk_size : int
             Maximum chunk size — chunks above this are split further.
         """
-        valid_methods = {'sentence', 'paragraph', 'sliding_window', 'token_aware'}
+        valid_methods = {
+            "sentence",
+            "paragraph",
+            "sliding_window",
+            "token_aware",
+            "semantic",
+        }
         if method not in valid_methods:
-            raise ValueError(
-                f"Invalid method '{method}'. Choose from: {valid_methods}"
-            )
+            raise ValueError(f"Invalid method '{method}'. Choose from: {valid_methods}")
 
         self.method = method
         self.chunk_size = chunk_size
@@ -66,17 +68,14 @@ class TextChunker:
         self.min_chunk_size = min_chunk_size
         self.max_chunk_size = max_chunk_size
         self._stats = {
-            'total_documents': 0,
-            'total_chunks': 0,
-            'avg_chunk_size': 0,
-            'min_chunk_size_actual': 0,
-            'max_chunk_size_actual': 0
+            "total_documents": 0,
+            "total_chunks": 0,
+            "avg_chunk_size": 0,
+            "min_chunk_size_actual": 0,
+            "max_chunk_size_actual": 0,
         }
 
-    def chunk_documents(
-        self,
-        documents: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def chunk_documents(self, documents: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Chunk a list of document dicts.
 
@@ -91,10 +90,10 @@ class TextChunker:
             List of chunk dicts with original metadata preserved.
         """
         all_chunks = []
-        self._stats['total_documents'] = len(documents)
+        self._stats["total_documents"] = len(documents)
 
         for doc in documents:
-            text = doc.get('text', '')
+            text = doc.get("text", "")
             if not text.strip():
                 continue
 
@@ -105,40 +104,42 @@ class TextChunker:
 
             for i, chunk_text in enumerate(processed):
                 chunk = {
-                    'text': chunk_text,
-                    'chunk_index': i,
-                    'total_chunks': len(processed),
-                    'char_count': len(chunk_text),
-                    'word_count': len(chunk_text.split()),
-                    'estimated_tokens': self._estimate_tokens(chunk_text),
-                    'source': doc.get('source', ''),
-                    'source_type': doc.get('source_type', ''),
-                    'doc_id': doc.get('doc_id', ''),
-                    'page': doc.get('page'),
-                    'method': self.method
+                    "text": chunk_text,
+                    "chunk_index": i,
+                    "total_chunks": len(processed),
+                    "char_count": len(chunk_text),
+                    "word_count": len(chunk_text.split()),
+                    "estimated_tokens": self._estimate_tokens(chunk_text),
+                    "source": doc.get("source", ""),
+                    "source_type": doc.get("source_type", ""),
+                    "doc_id": doc.get("doc_id", ""),
+                    "page": doc.get("page"),
+                    "method": self.method,
                 }
                 all_chunks.append(chunk)
 
         # Update stats
         if all_chunks:
-            sizes = [c['char_count'] for c in all_chunks]
-            self._stats['total_chunks'] = len(all_chunks)
-            self._stats['avg_chunk_size'] = sum(sizes) / len(sizes)
-            self._stats['min_chunk_size_actual'] = min(sizes)
-            self._stats['max_chunk_size_actual'] = max(sizes)
+            sizes = [c["char_count"] for c in all_chunks]
+            self._stats["total_chunks"] = len(all_chunks)
+            self._stats["avg_chunk_size"] = sum(sizes) / len(sizes)
+            self._stats["min_chunk_size_actual"] = min(sizes)
+            self._stats["max_chunk_size_actual"] = max(sizes)
 
         return all_chunks
 
     def _chunk_text(self, text: str) -> List[str]:
         """Route to the selected chunking method."""
-        if self.method == 'sentence':
+        if self.method == "sentence":
             return self._chunk_by_sentence(text)
-        elif self.method == 'paragraph':
+        elif self.method == "paragraph":
             return self._chunk_by_paragraph(text)
-        elif self.method == 'sliding_window':
+        elif self.method == "sliding_window":
             return self._chunk_sliding_window(text)
-        elif self.method == 'token_aware':
+        elif self.method == "token_aware":
             return self._chunk_token_aware(text)
+        elif self.method == "semantic":
+            return self._chunk_semantic(text)
         else:
             return [text]
 
@@ -157,7 +158,7 @@ class TextChunker:
         for sentence in sentences:
             slen = len(sentence)
             if current_len + slen > self.chunk_size and current:
-                chunks.append(' '.join(current))
+                chunks.append(" ".join(current))
                 # Keep overlap by retaining last sentence(s)
                 overlap_chars = 0
                 overlap_sents = []
@@ -174,13 +175,13 @@ class TextChunker:
             current_len += slen
 
         if current:
-            chunks.append(' '.join(current))
+            chunks.append(" ".join(current))
 
         return chunks
 
     def _chunk_by_paragraph(self, text: str) -> List[str]:
         """Split text by paragraph boundaries (double newlines)."""
-        paragraphs = re.split(r'\n\s*\n', text)
+        paragraphs = re.split(r"\n\s*\n", text)
         paragraphs = [p.strip() for p in paragraphs if p.strip()]
 
         if not paragraphs:
@@ -193,7 +194,7 @@ class TextChunker:
         for para in paragraphs:
             plen = len(para)
             if current_len + plen > self.chunk_size and current:
-                chunks.append('\n\n'.join(current))
+                chunks.append("\n\n".join(current))
                 current = []
                 current_len = 0
 
@@ -201,7 +202,7 @@ class TextChunker:
             current_len += plen
 
         if current:
-            chunks.append('\n\n'.join(current))
+            chunks.append("\n\n".join(current))
 
         return chunks
 
@@ -220,7 +221,7 @@ class TextChunker:
 
             # Try to break at word boundary
             if end < len(text):
-                last_space = chunk.rfind(' ')
+                last_space = chunk.rfind(" ")
                 if last_space > self.chunk_size * 0.5:
                     chunk = chunk[:last_space]
 
@@ -254,7 +255,7 @@ class TextChunker:
         while start < len(words):
             end = min(start + target_words, len(words))
             chunk_words = words[start:end]
-            chunk = ' '.join(chunk_words)
+            chunk = " ".join(chunk_words)
             if chunk.strip():
                 chunks.append(chunk.strip())
             start += step
@@ -268,21 +269,21 @@ class TextChunker:
 
         # Merge chunks smaller than min_chunk_size with neighbor
         merged = []
-        buffer = ''
+        buffer = ""
 
         for chunk in chunks:
             if len(chunk) < self.min_chunk_size:
-                buffer = (buffer + ' ' + chunk).strip() if buffer else chunk
+                buffer = (buffer + " " + chunk).strip() if buffer else chunk
             else:
                 if buffer:
                     # Attach buffer to this chunk
-                    chunk = (buffer + ' ' + chunk).strip()
-                    buffer = ''
+                    chunk = (buffer + " " + chunk).strip()
+                    buffer = ""
                 merged.append(chunk)
 
         if buffer:
             if merged:
-                merged[-1] = (merged[-1] + ' ' + buffer).strip()
+                merged[-1] = (merged[-1] + " " + buffer).strip()
             else:
                 merged.append(buffer)
 
@@ -296,6 +297,58 @@ class TextChunker:
                 final.append(chunk)
 
         return final
+
+    def _chunk_semantic(self, text: str) -> List[str]:
+        """
+        Semantic-aware chunking that keeps structured data fields together.
+        Ideal for product data, spec sheets, and metadata-rich content.
+        Splits on section boundaries (labeled lines like 'Key: Value').
+        """
+        # Detect section headers (lines starting with known labels)
+        section_pattern = re.compile(
+            r"^(Product|Brand|Price|Rating|Availability|Seller|"
+            r"Category|Description|Key Features|Specifications|"
+            r"Features|Overview|Details|Summary)[:\s]",
+            re.MULTILINE | re.IGNORECASE,
+        )
+
+        sections = []
+        last_end = 0
+        for match in section_pattern.finditer(text):
+            start = match.start()
+            if start > last_end:
+                chunk = text[last_end:start].strip()
+                if chunk:
+                    sections.append(chunk)
+            last_end = start
+        # Remaining text
+        if last_end < len(text):
+            chunk = text[last_end:].strip()
+            if chunk:
+                sections.append(chunk)
+
+        if not sections:
+            # Fallback to paragraph chunking
+            return self._chunk_by_paragraph(text)
+
+        # Group sections to stay within chunk_size
+        chunks = []
+        current = []
+        current_len = 0
+
+        for section in sections:
+            slen = len(section)
+            if current_len + slen > self.chunk_size and current:
+                chunks.append("\n\n".join(current))
+                current = []
+                current_len = 0
+            current.append(section)
+            current_len += slen
+
+        if current:
+            chunks.append("\n\n".join(current))
+
+        return chunks
 
     @staticmethod
     def _estimate_tokens(text: str) -> int:
@@ -318,8 +371,8 @@ class TextChunker:
         print(f"   Target size: {self.chunk_size} chars")
         print(f"   Overlap: {self.overlap} chars")
 
-        if stats['total_chunks'] > 0:
-            print(f"\n📊 Chunk sizes:")
+        if stats["total_chunks"] > 0:
+            print("\n📊 Chunk sizes:")
             print(f"   • Average: {stats['avg_chunk_size']:.0f} chars")
             print(f"   • Min: {stats['min_chunk_size_actual']} chars")
             print(f"   • Max: {stats['max_chunk_size_actual']} chars")

@@ -23,7 +23,9 @@ def main():
         print("\nExamples:")
         print("  python3 example_llm_pipeline.py research_paper.pdf")
         print("  python3 example_llm_pipeline.py paper.pdf notes.md data.json")
-        print("  python3 example_llm_pipeline.py https://en.wikipedia.org/wiki/Machine_learning")
+        print(
+            "  python3 example_llm_pipeline.py https://en.wikipedia.org/wiki/Machine_learning"
+        )
         print("  python3 example_llm_pipeline.py ./my_docs/  (whole folder)")
         sys.exit(1)
 
@@ -31,10 +33,7 @@ def main():
     print(f"\n📥 Sources: {sources}\n")
 
     # ─── Initialize Pipeline ─────────────────────────────────────────
-    llm = LLMPipeline(
-        registry_dir="./llm_datasets",
-        log_dir="./llm_logs"
-    )
+    llm = LLMPipeline(registry_dir="./llm_datasets", log_dir="./llm_logs")
 
     # ─── Option A: Full Pipeline (one call) ──────────────────────────
     result = llm.run_full_pipeline(
@@ -42,13 +41,13 @@ def main():
         version="v1.0.0",
         output_dir="./llm_output",
         model="meta-llama/Meta-Llama-3-8B",
-        method="lora",              # or "qlora" for 4-bit
-        domain="general",           # change to your domain: "medical", "legal", etc.
-        template="alpaca",          # or "chatml", "sharegpt"
+        method="lora",  # or "qlora" for 4-bit
+        domain="general",  # change to your domain: "medical", "legal", etc.
+        template="alpaca",  # or "chatml", "sharegpt"
         chunk_method="sliding_window",
         chunk_size=512,
         min_quality_score=0.3,
-        description="My first dataset"
+        description="My first dataset",
     )
 
     # ─── Show outputs ────────────────────────────────────────────────
@@ -59,11 +58,13 @@ def main():
         size = os.path.getsize(path)
         print(f"  📄 {key}: {path} ({size:,} bytes)")
 
-    print(f"\n🎯 Next steps:")
-    print(f"  1. Review: ./llm_output/training_data.jsonl")
-    print(f"  2. Review: ./llm_output/training_config.json")
-    print(f"  3. To train (on GPU): python3 ./llm_output/train.py")
-    print(f"  4. Install GPU deps: pip install -r ./llm_output/requirements_training.txt")
+    print("\n🎯 Next steps:")
+    print("  1. Review: ./llm_output/training_data.jsonl")
+    print("  2. Review: ./llm_output/training_config.json")
+    print("  3. To train (on GPU): python3 ./llm_output/train.py")
+    print(
+        "  4. Install GPU deps: pip install -r ./llm_output/requirements_training.txt"
+    )
 
 
 def step_by_step_example():
@@ -71,8 +72,13 @@ def step_by_step_example():
     Alternative: Step-by-step control (uncomment main() call below to use).
     """
     from data_pipeline import (
-        DocumentIngestor, TextChunker, InstructFormatter,
-        QualityScorer, DatasetRegistry, FineTuneConfig, LLMMonitor
+        DocumentIngestor,
+        TextChunker,
+        InstructFormatter,
+        QualityScorer,
+        DatasetRegistry,
+        FineTuneConfig,
+        LLMMonitor,
     )
 
     # Layer 1: Ingest

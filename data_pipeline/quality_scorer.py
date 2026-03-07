@@ -7,17 +7,23 @@ and toxicity/bias before fine-tuning.
 
 import re
 import math
-import hashlib
-from collections import Counter
 from typing import List, Dict, Any, Optional, Set
 
 # scikit-learn is already a project dependency
 try:
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.metrics.pairwise import cosine_similarity
+
     HAS_SKLEARN = True
 except ImportError:
     HAS_SKLEARN = False
+
+try:
+    from .embedding_engine import EmbeddingEngine
+
+    HAS_EMBEDDINGS = True
+except ImportError:
+    HAS_EMBEDDINGS = False
 
 import numpy as np
 
@@ -42,21 +48,32 @@ class QualityScorer:
 
     # Default toxicity/bias keywords (English, conservative)
     DEFAULT_TOXIC_KEYWORDS = {
-        'hate', 'kill', 'murder', 'terrorist', 'bomb',
-        'slur', 'racist', 'sexist', 'nazi', 'supremacist',
-        'genocide', 'torture', 'rape', 'abuse'
+        "hate",
+        "kill",
+        "murder",
+        "terrorist",
+        "bomb",
+        "slur",
+        "racist",
+        "sexist",
+        "nazi",
+        "supremacist",
+        "genocide",
+        "torture",
+        "rape",
+        "abuse",
     }
 
     # Low-quality indicators
     LOW_QUALITY_PATTERNS = [
-        re.compile(r'lorem ipsum', re.IGNORECASE),
-        re.compile(r'click here', re.IGNORECASE),
-        re.compile(r'subscribe now', re.IGNORECASE),
-        re.compile(r'cookie policy', re.IGNORECASE),
-        re.compile(r'terms of service', re.IGNORECASE),
-        re.compile(r'all rights reserved', re.IGNORECASE),
-        re.compile(r'©\s*\d{4}', re.IGNORECASE),
-        re.compile(r'http[s]?://\S+'),  # Excessive URLs
+        re.compile(r"lorem ipsum", re.IGNORECASE),
+        re.compile(r"click here", re.IGNORECASE),
+        re.compile(r"subscribe now", re.IGNORECASE),
+        re.compile(r"cookie policy", re.IGNORECASE),
+        re.compile(r"terms of service", re.IGNORECASE),
+        re.compile(r"all rights reserved", re.IGNORECASE),
+        re.compile(r"©\s*\d{4}", re.IGNORECASE),
+        re.compile(r"http[s]?://\S+"),  # Excessive URLs
     ]
 
     def __init__(
@@ -66,7 +83,7 @@ class QualityScorer:
         toxic_keywords: Optional[Set[str]] = None,
         custom_blocklist: Optional[Set[str]] = None,
         min_length: int = 50,
-        max_length: int = 10000
+        max_length: int = 10000,
     ):
         """
         Initialize the quality scorer.
@@ -92,23 +109,28 @@ class QualityScorer:
         self.toxic_keywords = toxic_keywords or self.DEFAULT_TOXIC_KEYWORDS
         if custom_blocklist:
             self.toxic_keywords = self.toxic_keywords | custom_blocklist
+
         self.min_length = min_length
         self.max_length = max_length
 
+        if HAS_EMBEDDINGS:
+            # We initialize it lazily in _detect_duplicates to save memory
+            self._embedding_engine: Optional[EmbeddingEngine] = None
+        else:
+            self._embedding_engine = None
+
         self._stats = {
-            'total_samples': 0,
-            'passed': 0,
-            'filtered_quality': 0,
-            'filtered_toxic': 0,
-            'filtered_duplicate': 0,
-            'filtered_length': 0,
-            'avg_quality_score': 0.0
+            "total_samples": 0,
+            "passed": 0,
+            "filtered_quality": 0,
+            "filtered_toxic": 0,
+            "filtered_duplicate": 0,
+            "filtered_length": 0,
+            "avg_quality_score": 0.0,
+            "filtered_count": 0,
         }
 
-    def score(
-        self,
-        samples: List[Dict[str, Any]]
-    ) -> List[Dict[str, Any]]:
+    def score(self, samples: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """
         Score all samples for quality.
 
@@ -123,7 +145,7 @@ class QualityScorer:
             Same samples with added 'quality' dict containing scores
             and flags.
         """
-        self._stats['total_samples'] = len(samples)
+        self._stats["total_samples"] = len(samples)
 
         # Extract text for each sample
         texts = [self._get_sample_text(s) for s in samples]
@@ -136,48 +158,46 @@ class QualityScorer:
             text = texts[i]
 
             quality = {
-                'length_score': self._score_length(text),
-                'diversity_score': self._score_diversity(text),
-                'coherence_score': self._score_coherence(text),
-                'ratio_score': self._score_instruction_ratio(sample),
-                'is_toxic': self._check_toxicity(text),
-                'low_quality_flags': self._check_low_quality(text),
-                'is_duplicate': dup_flags[i],
-                'overall_score': 0.0
+                "length_score": self._score_length(text),
+                "diversity_score": self._score_diversity(text),
+                "coherence_score": self._score_coherence(text),
+                "ratio_score": self._score_instruction_ratio(sample),
+                "is_toxic": self._check_toxicity(text),
+                "low_quality_flags": self._check_low_quality(text),
+                "is_duplicate": dup_flags[i],
+                "overall_score": 0.0,
             }
 
             # Compute overall score (weighted average)
-            quality['overall_score'] = (
-                quality['length_score'] * 0.2 +
-                quality['diversity_score'] * 0.3 +
-                quality['coherence_score'] * 0.2 +
-                quality['ratio_score'] * 0.3
+            quality["overall_score"] = (
+                quality["length_score"] * 0.2
+                + quality["diversity_score"] * 0.3
+                + quality["coherence_score"] * 0.2
+                + quality["ratio_score"] * 0.3
             )
 
             # Penalize for flags
-            if quality['is_toxic']:
-                quality['overall_score'] *= 0.0  # Zero out toxic content
-            if quality['is_duplicate']:
-                quality['overall_score'] *= 0.1  # Heavy penalty for duplicates
-            if quality['low_quality_flags']:
-                penalty = len(quality['low_quality_flags']) * 0.15
-                quality['overall_score'] *= max(0.0, 1.0 - penalty)
+            if quality["is_toxic"]:
+                quality["overall_score"] *= 0.0  # Zero out toxic content
+            if quality["is_duplicate"]:
+                quality["overall_score"] *= 0.1  # Heavy penalty for duplicates
+            if quality["low_quality_flags"]:
+                penalty = len(quality["low_quality_flags"]) * 0.15
+                quality["overall_score"] *= max(0.0, 1.0 - penalty)
 
             sample_copy = dict(sample)
-            sample_copy['quality'] = quality
+            sample_copy["quality"] = quality
             scored_samples.append(sample_copy)
 
         # Update stats
-        scores = [s['quality']['overall_score'] for s in scored_samples]
+        scores = [s["quality"]["overall_score"] for s in scored_samples]
         if scores:
-            self._stats['avg_quality_score'] = sum(scores) / len(scores)
+            self._stats["avg_quality_score"] = sum(scores) / len(scores)
 
         return scored_samples
 
     def filter(
-        self,
-        scored_samples: List[Dict[str, Any]],
-        min_score: Optional[float] = None
+        self, scored_samples: List[Dict[str, Any]], min_score: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """
         Filter scored samples by quality threshold.
@@ -198,38 +218,36 @@ class QualityScorer:
         filtered = []
 
         for sample in scored_samples:
-            q = sample.get('quality', {})
+            q = sample.get("quality", {})
             text = self._get_sample_text(sample)
 
             # Length check
             if len(text) < self.min_length or len(text) > self.max_length:
-                self._stats['filtered_length'] += 1
+                self._stats["filtered_length"] += 1
                 continue
 
             # Toxicity check
-            if q.get('is_toxic', False):
-                self._stats['filtered_toxic'] += 1
+            if q.get("is_toxic", False):
+                self._stats["filtered_toxic"] += 1
                 continue
 
             # Duplicate check
-            if q.get('is_duplicate', False):
-                self._stats['filtered_duplicate'] += 1
+            if q.get("is_duplicate", False):
+                self._stats["filtered_duplicate"] += 1
                 continue
 
             # Quality score check
-            if q.get('overall_score', 0) < threshold:
-                self._stats['filtered_quality'] += 1
+            if q.get("overall_score", 0) < threshold:
+                self._stats["filtered_quality"] += 1
                 continue
 
             filtered.append(sample)
 
-        self._stats['passed'] = len(filtered)
+        self._stats["passed"] = len(filtered)
         return filtered
 
     def score_and_filter(
-        self,
-        samples: List[Dict[str, Any]],
-        min_score: Optional[float] = None
+        self, samples: List[Dict[str, Any]], min_score: Optional[float] = None
     ) -> List[Dict[str, Any]]:
         """Convenience method: score then filter in one call."""
         scored = self.score(samples)
@@ -258,7 +276,7 @@ class QualityScorer:
         Score vocabulary diversity using type-token ratio (TTR).
         Higher TTR = more diverse vocabulary.
         """
-        words = re.findall(r'\b\w+\b', text.lower())
+        words = re.findall(r"\b\w+\b", text.lower())
         if not words:
             return 0.0
 
@@ -286,7 +304,7 @@ class QualityScorer:
         score = 0.0
 
         # Has proper sentences (ending with punctuation)
-        sentences = re.split(r'[.!?]+', text)
+        sentences = re.split(r"[.!?]+", text)
         sentences = [s.strip() for s in sentences if len(s.strip()) > 10]
         if len(sentences) >= 2:
             score += 0.4
@@ -294,9 +312,7 @@ class QualityScorer:
             score += 0.2
 
         # Has multi-word sentences (not just keywords)
-        avg_words = np.mean([
-            len(s.split()) for s in sentences
-        ]) if sentences else 0
+        avg_words = np.mean([len(s.split()) for s in sentences]) if sentences else 0
         if avg_words >= 8:
             score += 0.3
         elif avg_words >= 4:
@@ -304,10 +320,24 @@ class QualityScorer:
 
         # Has connecting words (indicates flowing text)
         connectors = {
-            'however', 'therefore', 'furthermore', 'moreover',
-            'additionally', 'because', 'since', 'although',
-            'while', 'thus', 'hence', 'consequently', 'also',
-            'then', 'next', 'finally', 'first', 'second'
+            "however",
+            "therefore",
+            "furthermore",
+            "moreover",
+            "additionally",
+            "because",
+            "since",
+            "although",
+            "while",
+            "thus",
+            "hence",
+            "consequently",
+            "also",
+            "then",
+            "next",
+            "finally",
+            "first",
+            "second",
         }
         words_lower = set(text.lower().split())
         connector_count = len(words_lower & connectors)
@@ -352,23 +382,46 @@ class QualityScorer:
 
     def _detect_duplicates(self, texts: List[str]) -> List[bool]:
         """
-        Detect semantic duplicates using TF-IDF cosine similarity.
+        Detect semantic duplicates using the new EmbeddingEngine (Sentence-Transformers/FAISS)
+        or fallback to TF-IDF cosine similarity.
         """
-        if not HAS_SKLEARN or len(texts) < 2:
+        if len(texts) < 2:
             return [False] * len(texts)
 
-        # Filter out empty texts for TF-IDF
+        # Filter out empty texts
         valid_indices = [i for i, t in enumerate(texts) if t.strip()]
         if len(valid_indices) < 2:
             return [False] * len(texts)
 
         valid_texts = [texts[i] for i in valid_indices]
+        dup_flags = [False] * len(texts)
+
+        # 1. Try to use EmbeddingEngine (better for semantic dedup)
+        if HAS_EMBEDDINGS:
+            try:
+                if self._embedding_engine is None:
+                    self._embedding_engine = EmbeddingEngine()
+
+                result = self._embedding_engine.deduplicate(
+                    valid_texts, threshold=self.similarity_threshold
+                )
+
+                for j in result["duplicate_indices"]:
+                    real_j = valid_indices[j]
+                    dup_flags[real_j] = True
+
+                return dup_flags
+            except Exception:
+                # If it fails (e.g., OOM), fallback to TF-IDF
+                pass
+
+        # 2. Fallback to TF-IDF
+        if not HAS_SKLEARN:
+            return dup_flags
 
         try:
             vectorizer = TfidfVectorizer(
-                max_features=5000,
-                stop_words='english',
-                ngram_range=(1, 2)
+                max_features=5000, stop_words="english", ngram_range=(1, 2)
             )
             tfidf_matrix = vectorizer.fit_transform(valid_texts)
             sim_matrix = cosine_similarity(tfidf_matrix)
@@ -396,7 +449,7 @@ class QualityScorer:
     def _check_toxicity(self, text: str) -> bool:
         """Check if text contains toxic/biased keywords."""
         text_lower = text.lower()
-        words = set(re.findall(r'\b\w+\b', text_lower))
+        words = set(re.findall(r"\b\w+\b", text_lower))
         return bool(words & self.toxic_keywords)
 
     def _check_low_quality(self, text: str) -> List[str]:
@@ -414,56 +467,56 @@ class QualityScorer:
         parts = []
 
         # Alpaca format
-        if 'instruction' in sample:
-            parts.append(sample.get('instruction', ''))
-            parts.append(sample.get('input', ''))
-            parts.append(sample.get('output', ''))
+        if "instruction" in sample:
+            parts.append(sample.get("instruction", ""))
+            parts.append(sample.get("input", ""))
+            parts.append(sample.get("output", ""))
 
         # ChatML format
-        elif 'messages' in sample:
-            for msg in sample['messages']:
-                parts.append(msg.get('content', ''))
+        elif "messages" in sample:
+            for msg in sample["messages"]:
+                parts.append(msg.get("content", ""))
 
         # ShareGPT format
-        elif 'conversations' in sample:
-            for conv in sample['conversations']:
-                parts.append(conv.get('value', ''))
+        elif "conversations" in sample:
+            for conv in sample["conversations"]:
+                parts.append(conv.get("value", ""))
 
         # Raw text
-        elif 'text' in sample:
-            parts.append(sample['text'])
+        elif "text" in sample:
+            parts.append(sample["text"])
 
-        return ' '.join(p for p in parts if p)
+        return " ".join(p for p in parts if p)
 
     def _get_instruction(self, sample: Dict[str, Any]) -> str:
         """Extract instruction part from a sample."""
-        if 'instruction' in sample:
-            return sample['instruction']
-        elif 'messages' in sample:
-            msgs = sample['messages']
+        if "instruction" in sample:
+            return sample["instruction"]
+        elif "messages" in sample:
+            msgs = sample["messages"]
             for m in msgs:
-                if m.get('role') == 'user':
-                    return m.get('content', '')
-        elif 'conversations' in sample:
-            for c in sample['conversations']:
-                if c.get('from') == 'human':
-                    return c.get('value', '')
-        return ''
+                if m.get("role") == "user":
+                    return m.get("content", "")
+        elif "conversations" in sample:
+            for c in sample["conversations"]:
+                if c.get("from") == "human":
+                    return c.get("value", "")
+        return ""
 
     def _get_response(self, sample: Dict[str, Any]) -> str:
         """Extract response part from a sample."""
-        if 'output' in sample:
-            return sample['output']
-        elif 'messages' in sample:
-            msgs = sample['messages']
+        if "output" in sample:
+            return sample["output"]
+        elif "messages" in sample:
+            msgs = sample["messages"]
             for m in msgs:
-                if m.get('role') == 'assistant':
-                    return m.get('content', '')
-        elif 'conversations' in sample:
-            for c in sample['conversations']:
-                if c.get('from') == 'gpt':
-                    return c.get('value', '')
-        return ''
+                if m.get("role") == "assistant":
+                    return m.get("content", "")
+        elif "conversations" in sample:
+            for c in sample["conversations"]:
+                if c.get("from") == "gpt":
+                    return c.get("value", "")
+        return ""
 
     def get_stats(self) -> Dict[str, Any]:
         """Return quality scoring statistics."""
@@ -480,8 +533,10 @@ class QualityScorer:
         print(f"📈 Avg quality score: {stats['avg_quality_score']:.3f}")
 
         filtered_total = (
-            stats['filtered_quality'] + stats['filtered_toxic'] +
-            stats['filtered_duplicate'] + stats['filtered_length']
+            stats["filtered_quality"]
+            + stats["filtered_toxic"]
+            + stats["filtered_duplicate"]
+            + stats["filtered_length"]
         )
         if filtered_total > 0:
             print(f"\n🚫 Filtered: {filtered_total}")

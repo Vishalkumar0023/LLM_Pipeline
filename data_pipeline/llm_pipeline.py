@@ -39,9 +39,7 @@ class LLMPipeline:
     """
 
     def __init__(
-        self,
-        registry_dir: str = './dataset_registry',
-        log_dir: str = './llm_logs'
+        self, registry_dir: str = "./dataset_registry", log_dir: str = "./llm_logs"
     ):
         """
         Initialize the LLM Pipeline.
@@ -73,10 +71,7 @@ class LLMPipeline:
         self._monitor: Optional[LLMMonitor] = None
 
         # Pipeline report
-        self._report: Dict[str, Any] = {
-            'stages_completed': [],
-            'errors': []
-        }
+        self._report: Dict[str, Any] = {"stages_completed": [], "errors": []}
 
     # ─── Stage 1: Ingestion ──────────────────────────────────────────────
 
@@ -84,8 +79,8 @@ class LLMPipeline:
         self,
         sources: Union[str, List[str]],
         recursive: bool = False,
-        encoding: str = 'utf-8',
-        timeout: int = 30
+        encoding: str = "utf-8",
+        timeout: int = 30,
     ) -> List[Dict[str, Any]]:
         """
         Ingest documents from multiple sources.
@@ -114,8 +109,8 @@ class LLMPipeline:
         self.documents = self._ingestor.ingest(sources, recursive=recursive)
         self._ingestor.print_summary()
 
-        self._report['stages_completed'].append('ingestion')
-        self._report['ingestion'] = self._ingestor.get_stats()
+        self._report["stages_completed"].append("ingestion")
+        self._report["ingestion"] = self._ingestor.get_stats()
 
         return self.documents
 
@@ -123,11 +118,11 @@ class LLMPipeline:
 
     def chunk(
         self,
-        method: str = 'paragraph',
+        method: str = "paragraph",
         chunk_size: int = 512,
         overlap: int = 64,
         min_chunk_size: int = 50,
-        max_chunk_size: int = 2048
+        max_chunk_size: int = 2048,
     ) -> List[Dict[str, Any]]:
         """
         Chunk ingested documents.
@@ -162,13 +157,13 @@ class LLMPipeline:
             chunk_size=chunk_size,
             overlap=overlap,
             min_chunk_size=min_chunk_size,
-            max_chunk_size=max_chunk_size
+            max_chunk_size=max_chunk_size,
         )
         self.chunks = self._chunker.chunk_documents(self.documents)
         self._chunker.print_summary()
 
-        self._report['stages_completed'].append('chunking')
-        self._report['chunking'] = self._chunker.get_stats()
+        self._report["stages_completed"].append("chunking")
+        self._report["chunking"] = self._chunker.get_stats()
 
         return self.chunks
 
@@ -176,11 +171,11 @@ class LLMPipeline:
 
     def format_instructions(
         self,
-        template: str = 'alpaca',
-        domain: str = 'general',
+        template: str = "alpaca",
+        domain: str = "general",
         generate_qa: bool = True,
         pairs_per_chunk: int = 2,
-        system_prompt: Optional[str] = None
+        system_prompt: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Format chunks into instruction-response pairs.
@@ -211,19 +206,18 @@ class LLMPipeline:
         print("=" * 60)
 
         self._formatter = InstructFormatter(
-            template=template,
-            system_prompt=system_prompt
+            template=template, system_prompt=system_prompt
         )
         self.pairs = self._formatter.format_chunks(
             self.chunks,
             domain=domain,
             generate_qa=generate_qa,
-            pairs_per_chunk=pairs_per_chunk
+            pairs_per_chunk=pairs_per_chunk,
         )
         self._formatter.print_summary()
 
-        self._report['stages_completed'].append('formatting')
-        self._report['formatting'] = self._formatter.get_stats()
+        self._report["stages_completed"].append("formatting")
+        self._report["formatting"] = self._formatter.get_stats()
 
         return self.pairs
 
@@ -235,7 +229,7 @@ class LLMPipeline:
         similarity_threshold: float = 0.85,
         toxic_keywords: Optional[set] = None,
         min_length: int = 50,
-        max_length: int = 10000
+        max_length: int = 10000,
     ) -> List[Dict[str, Any]]:
         """
         Score and filter training pairs for quality.
@@ -270,14 +264,14 @@ class LLMPipeline:
             similarity_threshold=similarity_threshold,
             toxic_keywords=toxic_keywords,
             min_length=min_length,
-            max_length=max_length
+            max_length=max_length,
         )
         self.scored_pairs = self._scorer.score(self.pairs)
         self.filtered_pairs = self._scorer.filter(self.scored_pairs, min_score)
         self._scorer.print_summary()
 
-        self._report['stages_completed'].append('quality_scoring')
-        self._report['quality_scoring'] = self._scorer.get_stats()
+        self._report["stages_completed"].append("quality_scoring")
+        self._report["quality_scoring"] = self._scorer.get_stats()
 
         return self.filtered_pairs
 
@@ -286,10 +280,10 @@ class LLMPipeline:
     def version_dataset(
         self,
         version: str,
-        description: str = '',
+        description: str = "",
         source_files: Optional[List[str]] = None,
         parent_version: Optional[str] = None,
-        tags: Optional[List[str]] = None
+        tags: Optional[List[str]] = None,
     ) -> Dict[str, Any]:
         """
         Register the current dataset as a versioned snapshot.
@@ -327,11 +321,11 @@ class LLMPipeline:
             description=description,
             source_files=source_files,
             parent_version=parent_version,
-            tags=tags
+            tags=tags,
         )
 
-        self._report['stages_completed'].append('versioning')
-        self._report['versioning'] = metadata
+        self._report["stages_completed"].append("versioning")
+        self._report["versioning"] = metadata
 
         return metadata
 
@@ -339,12 +333,12 @@ class LLMPipeline:
 
     def generate_training_config(
         self,
-        model: str = 'meta-llama/Meta-Llama-3-8B',
-        method: str = 'lora',
-        backend: str = 'trl',
+        model: str = "meta-llama/Meta-Llama-3-8B",
+        method: str = "lora",
+        backend: str = "trl",
         lora_params: Optional[Dict] = None,
-        training_params: Optional[Dict] = None
-    ) -> 'FineTuneConfig':
+        training_params: Optional[Dict] = None,
+    ) -> "FineTuneConfig":
         """
         Generate training configuration and scripts.
 
@@ -370,11 +364,7 @@ class LLMPipeline:
         print("⚙️  STAGE 6: TRAINING CONFIGURATION")
         print("=" * 60)
 
-        self._config = FineTuneConfig(
-            model_name=model,
-            method=method,
-            backend=backend
-        )
+        self._config = FineTuneConfig(model_name=model, method=method, backend=backend)
 
         if lora_params:
             self._config.set_lora_params(**lora_params)
@@ -383,8 +373,8 @@ class LLMPipeline:
 
         self._config.print_summary()
 
-        self._report['stages_completed'].append('training_config')
-        self._report['training_config'] = self._config.get_full_config()
+        self._report["stages_completed"].append("training_config")
+        self._report["training_config"] = self._config.get_full_config()
 
         return self._config
 
@@ -395,7 +385,7 @@ class LLMPipeline:
         output_dir: str,
         include_config: bool = True,
         include_data: bool = True,
-        include_metadata: bool = False
+        include_metadata: bool = False,
     ) -> Dict[str, str]:
         """
         Export all pipeline outputs to a directory.
@@ -427,26 +417,25 @@ class LLMPipeline:
         if include_data and self._formatter:
             data = self.filtered_pairs if self.filtered_pairs else self.pairs
             if data:
-                data_path = os.path.join(output_dir, 'training_data.jsonl')
+                data_path = os.path.join(output_dir, "training_data.jsonl")
                 self._formatter.export_jsonl(
-                    data, data_path,
-                    include_metadata=include_metadata
+                    data, data_path, include_metadata=include_metadata
                 )
-                result['data'] = data_path
+                result["data"] = data_path
                 print(f"📄 Training data: {data_path} ({len(data)} samples)")
 
         # Export training config and script
         if include_config and self._config:
             config_files = self._config.export(
-                output_dir,
-                dataset_path=result.get('data', './training_data.jsonl')
+                output_dir, dataset_path=result.get("data", "./training_data.jsonl")
             )
             result.update(config_files)
 
         # Export pipeline report
-        report_path = os.path.join(output_dir, 'pipeline_report.json')
+        report_path = os.path.join(output_dir, "pipeline_report.json")
         import json
-        with open(report_path, 'w') as f:
+
+        with open(report_path, "w") as f:
             # Filter out non-serializable objects
             clean_report = {}
             for k, v in self._report.items():
@@ -456,7 +445,7 @@ class LLMPipeline:
                 except (TypeError, ValueError):
                     clean_report[k] = str(v)
             json.dump(clean_report, f, indent=2, default=str)
-        result['report'] = report_path
+        result["report"] = report_path
 
         print(f"\n✅ All outputs saved to: {output_dir}")
         return result
@@ -464,10 +453,7 @@ class LLMPipeline:
     # ─── Monitoring ──────────────────────────────────────────────────────
 
     def log_evaluation(
-        self,
-        run_id: str,
-        metrics: Dict[str, float],
-        **kwargs
+        self, run_id: str, metrics: Dict[str, float], **kwargs
     ) -> Dict[str, Any]:
         """Log an evaluation run to the monitor."""
         self._monitor = LLMMonitor(self.log_dir)
@@ -496,16 +482,16 @@ class LLMPipeline:
     def run_full_pipeline(
         self,
         sources: Union[str, List[str]],
-        version: str = 'v1.0.0',
-        output_dir: str = './llm_output',
-        model: str = 'meta-llama/Meta-Llama-3-8B',
-        method: str = 'lora',
-        domain: str = 'general',
-        template: str = 'alpaca',
-        chunk_method: str = 'sliding_window',
+        version: str = "v1.0.0",
+        output_dir: str = "./llm_output",
+        model: str = "meta-llama/Meta-Llama-3-8B",
+        method: str = "lora",
+        domain: str = "general",
+        template: str = "alpaca",
+        chunk_method: str = "sliding_window",
         chunk_size: int = 512,
         min_quality_score: float = 0.4,
-        description: str = ''
+        description: str = "",
     ) -> Dict[str, str]:
         """
         Run the complete pipeline end-to-end.
@@ -575,7 +561,7 @@ class LLMPipeline:
         print("🏁 PIPELINE COMPLETE")
         print("=" * 60)
         print(f"\n📋 Stages completed: {len(self._report['stages_completed'])}")
-        for stage in self._report['stages_completed']:
+        for stage in self._report["stages_completed"]:
             print(f"   ✅ {stage}")
 
         if self.documents:

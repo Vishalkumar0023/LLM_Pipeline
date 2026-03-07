@@ -1,0 +1,506 @@
+from flask import (
+    Blueprint,
+    request,
+    jsonify,
+    render_template,
+    redirect,
+    url_for,
+    g,
+    send_file,
+    send_from_directory,
+)
+import os
+import json
+import io
+from datetime import datetime
+
+from extensions import db
+from models import Dataset
+from utils import (
+    jwt_required,
+    get_current_user,
+    get_user_folder,
+    generate_plots,
+)
+
+# Load pandas for ml routes
+import pandas as pd
+import numpy as np
+
+ml_bp = Blueprint("ml", __name__)
+
+
+@ml_bp.route("/")
+def index():
+    """Home page - landing page for visitors, dashboard for logged-in users."""
+    user = get_current_user()
+    if user:
+        return redirect(url_for("ml.dashboard"))
+    return render_template("index.html")
+
+
+@ml_bp.route("/dashboard")
+@jwt_required
+def dashboard():
+    """User dashboard with their datasets."""
+    datasets = (
+        Dataset.query.filter_by(user_id=g.current_user.id)
+        .order_by(Dataset.created_at.desc())
+        .all()
+    )
+    return render_template("dashboard.html", datasets=datasets, user=g.current_user)
+
+
+@ml_bp.route("/upload", methods=["POST"])
+@jwt_required
+def upload_file():
+    """Handle file upload."""
+    if "file" not in request.files:
+        return jsonify({"error": "No file uploaded"}), 400
+
+    file = request.files["file"]
+    if file.filename == "":
+        return jsonify({"error": "No file selected"}), 400
+
+    if not file.filename.endswith((".csv", ".xlsx", ".xls")):
+        return jsonify({"error": "Only CSV and Excel files are supported"}), 400
+
+    try:
+        if file.filename.endswith(".csv"):
+            df = pd.read_csv(file)
+        else:
+            df = pd.read_excel(file)
+
+        for col in df.columns:
+            if hasattr(df[col].dtype, "name") and df[col].dtype.name in (
+                "string",
+                "String",
+            ):
+                df[col] = df[col].astype("object")
+            elif hasattr(df[col].dtype, "numpy_dtype"):
+                df[col] = df[col].astype(df[col].dtype.numpy_dtype)
+
+        user_folder = get_user_folder(g.current_user.id)
+        temp_path = os.path.join(user_folder, "temp_upload.csv")
+        df.to_csv(temp_path, index=False)
+
+        columns = df.columns.tolist()
+        dtypes = {col: str(df[col].dtype) for col in columns}
+        missing = {col: int(df[col].isnull().sum()) for col in columns}
+
+        sample_df = df.head(5).replace({np.nan: None})
+        sample = sample_df.to_dict("records")
+        for row in sample:
+            for key, value in row.items():
+                if pd.isna(value):
+                    row[key] = None
+                elif hasattr(value, "item"):
+                    row[key] = value.item()
+
+        return jsonify(
+            {
+                "success": True,
+                "filename": file.filename,
+                "shape": list(df.shape),
+                "columns": columns,
+                "dtypes": dtypes,
+                "missing": missing,
+                "sample": sample,
+            }
+        )
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@ml_bp.route("/process", methods=["POST"])
+@jwt_required
+def process_data():
+    """Process uploaded data through the pipeline."""
+    from data_pipeline import DataPipeline, DataCleaner
+
+    try:
+        data = request.json
+        target_col = data.get("target_column")
+        problem_type = data.get("problem_type", "regression")
+        dataset_name = data.get("dataset_name", "Untitled Dataset")
+        original_filename = data.get("original_filename", "unknown.csv")
+
+        user_folder = get_user_folder(g.current_user.id)
+        temp_path = os.path.join(user_folder, "temp_upload.csv")
+
+        if not os.path.exists(temp_path):
+            return jsonify(
+                {"error": "No file uploaded. Please upload a file first."}
+            ), 400
+
+        pipeline = DataPipeline()
+        pipeline.load(temp_path)
+        validation = pipeline.validate()
+
+        raw_cleaner = DataCleaner(pipeline.raw_df)
+        initial_quality = raw_cleaner.validate_quality()
+        suggestions = raw_cleaner.generate_suggestions()
+
+        pipeline.clean()
+        cleaning_summary = pipeline.cleaner.get_cleaning_summary()
+        final_quality = pipeline.cleaner.validate_quality()
+
+        if target_col and target_col in pipeline.cleaned_df.columns:
+            pipeline.engineer_features(target_col=target_col, problem_type=problem_type)
+        else:
+            pipeline.engineer_features()
+
+        feature_summary = pipeline.engineer.get_summary() if pipeline.engineer else {}
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        cleaned_filename = f"cleaned_{timestamp}.csv"
+        final_filename = f"final_{timestamp}.csv"
+
+        cleaned_path = os.path.join(user_folder, cleaned_filename)
+        final_path = os.path.join(user_folder, final_filename)
+
+        pipeline.cleaned_df.to_csv(cleaned_path, index=False)
+        pipeline.final_df.to_csv(final_path, index=False)
+
+        dataset = Dataset(
+            name=dataset_name,
+            original_filename=original_filename,
+            cleaned_path=cleaned_path,
+            final_path=final_path,
+            original_rows=validation["shape"][0],
+            original_cols=validation["shape"][1],
+            cleaned_rows=pipeline.cleaned_df.shape[0],
+            cleaned_cols=pipeline.cleaned_df.shape[1],
+            final_rows=pipeline.final_df.shape[0],
+            final_cols=pipeline.final_df.shape[1],
+            target_column=target_col,
+            problem_type=problem_type,
+            processing_log=json.dumps(
+                {
+                    "cleaning": cleaning_summary["operations"],
+                    "feature_engineering": feature_summary.get("transformations", []),
+                    "quality_impact": {
+                        "before": initial_quality,
+                        "after": final_quality,
+                    },
+                    "suggestions": suggestions,
+                    "row_changes": cleaning_summary.get("row_changes", []),
+                }
+            ),
+            user_id=g.current_user.id,
+        )
+        db.session.add(dataset)
+        db.session.commit()
+
+        raw_filename = f"raw_{dataset.id}.csv"
+        raw_path = os.path.join(user_folder, raw_filename)
+        pipeline.raw_df.to_csv(raw_path, index=False)
+
+        row_changes_df = pd.DataFrame(cleaning_summary.get("row_changes", []))
+        row_changes_filename = f"row_changes_{dataset.id}.csv"
+        row_changes_path = os.path.join(user_folder, row_changes_filename)
+        if not row_changes_df.empty:
+            row_changes_df.to_csv(row_changes_path, index=False)
+        else:
+            pd.DataFrame(
+                columns=[
+                    "index",
+                    "column",
+                    "old_value",
+                    "new_value",
+                    "operation",
+                    "reason",
+                ]
+            ).to_csv(row_changes_path, index=False)
+
+        plots = generate_plots(pipeline.cleaned_df, target_col)
+
+        try:
+            os.remove(temp_path)
+        except OSError:
+            pass
+
+        return jsonify(
+            {
+                "success": True,
+                "dataset_id": dataset.id,
+                "row_changes_csv": row_changes_filename,
+                "validation": {
+                    "original_shape": validation["shape"],
+                    "missing_count": validation["missing_values"][
+                        "total_missing_cells"
+                    ],
+                    "duplicate_count": validation["duplicates"]["count"],
+                },
+                "cleaning": {
+                    "final_shape": list(pipeline.cleaned_df.shape),
+                    "operations": cleaning_summary["operations"],
+                    "row_changes": cleaning_summary.get("row_changes", []),
+                },
+                "feature_engineering": {
+                    "final_shape": list(pipeline.final_df.shape),
+                    "transformations": feature_summary.get("transformations", []),
+                },
+                "quality_impact": {"before": initial_quality, "after": final_quality},
+                "suggestions": suggestions,
+                "plots": plots,
+            }
+        )
+    except Exception as e:
+        import traceback
+
+        traceback.print_exc()
+        return jsonify({"error": str(e)}), 500
+
+
+@ml_bp.route("/dataset/<int:dataset_id>")
+@jwt_required
+def view_dataset(dataset_id):
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if dataset.user_id != g.current_user.id:
+        return jsonify({"error": "Access denied"}), 403
+
+    cleaned_sample = []
+    cleaned_columns = []
+    final_sample = []
+    final_columns = []
+
+    try:
+        if os.path.exists(dataset.cleaned_path):
+            df_clean = pd.read_csv(dataset.cleaned_path)
+            cleaned_columns = df_clean.columns.tolist()
+            cleaned_sample = (
+                df_clean.head(10).replace({np.nan: None}).to_dict("records")
+            )
+
+        if os.path.exists(dataset.final_path):
+            df_final = pd.read_csv(dataset.final_path)
+            final_columns = df_final.columns.tolist()
+            final_sample = df_final.head(10).replace({np.nan: None}).to_dict("records")
+    except Exception as e:
+        print(f"Error loading dataset samples: {e}")
+
+    other_datasets = Dataset.query.filter(
+        Dataset.user_id == g.current_user.id, Dataset.id != dataset_id
+    ).all()
+
+    return render_template(
+        "view_dataset.html",
+        dataset=dataset,
+        cleaned_columns=cleaned_columns,
+        cleaned_sample=cleaned_sample,
+        final_columns=final_columns,
+        final_sample=final_sample,
+        processing_log=json.loads(dataset.processing_log)
+        if dataset.processing_log
+        else {},
+        other_datasets=other_datasets,
+    )
+
+
+@ml_bp.route("/dataset/<int:dataset_id>/download/<file_type>")
+@jwt_required
+def download_dataset(dataset_id, file_type):
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if dataset.user_id != g.current_user.id:
+        return jsonify({"error": "Access denied"}), 403
+
+    file_format = request.args.get("format", "csv")
+    if file_type == "cleaned":
+        path = dataset.cleaned_path
+        base_filename = f"{dataset.name}_cleaned"
+    elif file_type == "final":
+        path = dataset.final_path
+        base_filename = f"{dataset.name}_model_ready"
+    elif file_type == "model":
+        path = dataset.model_path
+        filename = f"{dataset.name}_model.pkl"
+        if not path or not os.path.exists(path):
+            return jsonify({"error": "File not found"}), 404
+        return send_file(path, as_attachment=True, download_name=filename)
+    else:
+        return jsonify({"error": "Invalid file type"}), 400
+
+    if not path or not os.path.exists(path):
+        return jsonify({"error": "File not found"}), 404
+
+    if file_format == "csv":
+        return send_file(path, as_attachment=True, download_name=f"{base_filename}.csv")
+    elif file_format == "xlsx":
+        try:
+            df = pd.read_csv(path)
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df.to_excel(writer, index=False)
+            output.seek(0)
+            return send_file(
+                output,
+                as_attachment=True,
+                download_name=f"{base_filename}.xlsx",
+                mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except Exception as e:
+            return jsonify({"error": f"Error converting to Excel: {str(e)}"}), 500
+    else:
+        return jsonify({"error": "Invalid format"}), 400
+
+
+@ml_bp.route("/dataset/<int:dataset_id>/delete", methods=["POST"])
+@jwt_required
+def delete_dataset(dataset_id):
+    dataset = Dataset.query.get_or_404(dataset_id)
+    if dataset.user_id != g.current_user.id:
+        return jsonify({"error": "Access denied"}), 403
+
+    try:
+        user_folder = get_user_folder(g.current_user.id)
+        for path in [
+            dataset.cleaned_path,
+            dataset.final_path,
+            dataset.model_path,
+            os.path.join(user_folder, f"raw_{dataset.id}.csv"),
+            os.path.join(user_folder, f"model_report_{dataset.id}.md"),
+            os.path.join(user_folder, f"model_report_{dataset.id}.html"),
+        ]:
+            if path and os.path.exists(path):
+                os.remove(path)
+
+        db.session.delete(dataset)
+        db.session.commit()
+        return jsonify({"success": True})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@ml_bp.route("/api/datasets")
+@jwt_required
+def api_datasets():
+    datasets = (
+        Dataset.query.filter_by(user_id=g.current_user.id)
+        .order_by(Dataset.created_at.desc())
+        .all()
+    )
+    return jsonify(
+        [
+            {
+                "id": d.id,
+                "name": d.name,
+                "original_filename": d.original_filename,
+                "original_rows": d.original_rows,
+                "original_cols": d.original_cols,
+                "final_rows": d.final_rows,
+                "final_cols": d.final_cols,
+                "target_column": d.target_column,
+                "problem_type": d.problem_type,
+                "created_at": d.created_at.isoformat(),
+            }
+            for d in datasets
+        ]
+    )
+
+
+@ml_bp.route("/files")
+@jwt_required
+def file_manager():
+    return render_template("files.html")
+
+
+@ml_bp.route("/api/user_files")
+@jwt_required
+def get_user_files():
+    user_folder = get_user_folder(g.current_user.id)
+    files = []
+    if os.path.exists(user_folder):
+        for entry in os.scandir(user_folder):
+            if entry.is_file() and not entry.name.startswith("."):
+                try:
+                    stat = entry.stat()
+                    file_type = "Unknown"
+                    if entry.name.endswith(".pkl"):
+                        file_type = "Model (.pkl)"
+                    elif entry.name.endswith(".csv"):
+                        if "cleaned" in entry.name:
+                            file_type = "Cleaned Data (.csv)"
+                        elif "final" in entry.name:
+                            file_type = "Model-Ready Data (.csv)"
+                        else:
+                            file_type = "Raw Data (.csv)"
+
+                    files.append(
+                        {
+                            "name": entry.name,
+                            "size": stat.st_size,
+                            "date": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                            "type": file_type,
+                        }
+                    )
+                except Exception:
+                    pass
+
+    files.sort(key=lambda x: x["date"], reverse=True)
+    return jsonify(files)
+
+
+@ml_bp.route("/api/delete_files", methods=["POST"])
+@jwt_required
+def delete_user_files():
+    data = request.json
+    filenames = data.get("filenames", [])
+    user_folder = get_user_folder(g.current_user.id)
+    deleted, errors = [], []
+    for filename in filenames:
+        if ".." in filename or "/" in filename or "\\" in filename:
+            continue
+        path = os.path.join(user_folder, filename)
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+                deleted.append(filename)
+        except Exception as e:
+            errors.append(f"Error deleting {filename}: {str(e)}")
+    return jsonify({"deleted": deleted, "errors": errors})
+
+
+@ml_bp.route("/download/<filename>")
+@jwt_required
+def download_file(filename):
+    user_folder = get_user_folder(g.current_user.id)
+    return send_from_directory(user_folder, filename, as_attachment=True)
+
+
+@ml_bp.route("/download_changes/<filename>")
+@jwt_required
+def download_changes(filename):
+    return download_file(filename)
+
+
+@ml_bp.route("/demo")
+def demo_page():
+    user = get_current_user()
+    user_models, untrained_datasets = [], []
+    if user:
+        datasets = Dataset.query.filter_by(user_id=user.id).all()
+        for d in datasets:
+            info = {
+                "id": d.id,
+                "name": d.name,
+                "target": d.target_column,
+                "type": d.problem_type,
+                "created_at": d.created_at.strftime("%Y-%m-%d"),
+            }
+            if d.model_path and os.path.exists(d.model_path):
+                user_models.append(info)
+            else:
+                untrained_datasets.append(info)
+    return render_template(
+        "demo.html",
+        user=user,
+        user_models=user_models,
+        untrained_datasets=untrained_datasets,
+    )
+
+
+# Some routes left out for brevity (model training), but we can add those to another blueprint or keep here.
