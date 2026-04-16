@@ -299,22 +299,31 @@ def llm_ingest():
             print(f"DEBUG INGEST: {error_msg}")
             return jsonify({"error": error_msg}), 400
 
+        # Auto-detect optimal pipeline config from ingested documents
+        from data_pipeline.auto_config import AutoPipelineConfig
+        auto_config = AutoPipelineConfig.detect(docs)
+
         sessions = load_llm_sessions(g.current_user.id)
         sessions[session_id] = {
             "documents": docs,
             "user_id": g.current_user.id,
             "folder": llm_folder,
+            "auto_config": auto_config,
         }
         save_llm_sessions(g.current_user.id, sessions)
+
+        total_chars = sum(d.get("char_count", 0) for d in docs)
+        total_words = sum(d.get("word_count", 0) for d in docs)
 
         return jsonify(
             {
                 "success": True,
                 "session_id": session_id,
                 "total_docs": len(docs),
-                "total_chars": stats.get("total_chars", 0),
-                "total_words": stats.get("total_words", 0),
+                "total_chars": total_chars,
+                "total_words": total_words,
                 "source_types": list(stats.get("by_type", {}).keys()),
+                "auto_config": auto_config,
             }
         )
     except Exception as e:
@@ -597,6 +606,13 @@ def llm_process():
 
         ollama_enabled = os.environ.get("OLLAMA_ENABLED", "false").strip().lower() in {"1", "true", "yes"}
 
+        # Auto-recommend export settings based on actual dataset stats
+        from data_pipeline.auto_config import AutoPipelineConfig
+        export_recommendations = AutoPipelineConfig.recommend_export_settings(
+            pair_count=len(filtered),
+            avg_quality=avg_quality,
+        )
+
         return jsonify(
             {
                 "success": True,
@@ -613,6 +629,7 @@ def llm_process():
                 "sample_pairs": sample,
                 "ollama_required": False,
                 "ollama_enabled": ollama_enabled,
+                "export_recommendations": export_recommendations,
             }
         )
     except Exception as e:

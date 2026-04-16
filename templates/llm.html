@@ -902,50 +902,62 @@
             </div>
         </div>
 
-        <!-- ═══════════ STAGE 2: CHUNK + FORMAT CONFIG ═══════════ -->
+        <!-- ═══════════ STAGE 2: AUTO-CONFIGURED PIPELINE ═══════════ -->
         <div class="card hidden" id="card-config">
             <div class="card-head">
                 <div class="card-icon ci-purple">⚙️</div>
-                <h2>Stage 2 — Chunking & Formatting Config</h2>
-                <span class="badge">Layers 2–3</span>
+                <h2>Stage 2 — Auto-Configured ✨</h2>
+                <span class="badge" style="background:rgba(52,211,153,0.12);color:#34d399;border-color:rgba(52,211,153,0.2);font-weight:700;">AI DETECTED</span>
             </div>
             <div class="card-body">
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label>Chunking Method</label>
-                        <select id="chunk-method">
-                            <option value="sliding_window">Sliding Window</option>
-                            <option value="paragraph">Paragraph</option>
-                            <option value="sentence">Sentence</option>
-                            <option value="token_aware">Token-Aware</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Chunk Size (chars)</label>
-                        <input type="number" id="chunk-size" value="512" min="100" max="4096">
-                    </div>
-                    <div class="form-group">
-                        <label>Output Template</label>
-                        <select id="template">
-                            <option value="alpaca">Alpaca</option>
-                            <option value="chatml">ChatML</option>
-                            <option value="sharegpt">ShareGPT</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label>Domain</label>
-                        <input type="text" id="domain" value="general" placeholder="e.g. medical, legal, finance">
-                    </div>
-                    <div class="form-group full">
-                        <label>Min Quality Score: <span id="quality-val">0.4</span></label>
-                        <input type="range" id="min-quality" min="0" max="1" step="0.05" value="0.4"
-                            oninput="document.getElementById('quality-val').textContent=this.value">
+                <!-- Auto-config reasoning badges -->
+                <div id="auto-config-reasons" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-bottom:1rem;"></div>
+
+                <!-- Customize toggle -->
+                <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;cursor:pointer;" onclick="toggleCustomize()">
+                    <span style="font-size:0.8rem;font-weight:700;color:var(--accent);">🔧 Customize Settings</span>
+                    <span id="customize-toggle-icon" style="font-size:0.9rem;color:var(--text-tertiary);transition:transform 0.3s;">▶</span>
+                </div>
+
+                <div id="customize-panel" style="display:none;">
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label>Chunking Method</label>
+                            <select id="chunk-method">
+                                <option value="sliding_window">Sliding Window</option>
+                                <option value="paragraph">Paragraph</option>
+                                <option value="sentence">Sentence</option>
+                                <option value="token_aware">Token-Aware</option>
+                                <option value="semantic">Semantic</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Chunk Size (chars)</label>
+                            <input type="number" id="chunk-size" value="512" min="100" max="4096">
+                        </div>
+                        <div class="form-group">
+                            <label>Output Template</label>
+                            <select id="template">
+                                <option value="alpaca">Alpaca</option>
+                                <option value="chatml">ChatML</option>
+                                <option value="sharegpt">ShareGPT</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label>Domain</label>
+                            <input type="text" id="domain" value="general" placeholder="e.g. medical, legal, finance">
+                        </div>
+                        <div class="form-group full">
+                            <label>Min Quality Score: <span id="quality-val">0.4</span></label>
+                            <input type="range" id="min-quality" min="0" max="1" step="0.05" value="0.4"
+                                oninput="document.getElementById('quality-val').textContent=this.value">
+                        </div>
                     </div>
                 </div>
 
                 <p style="margin-top:1rem; font-size:0.8rem; color:var(--text-secondary);">
-                    Internal pipeline is always enabled:
-                    scraper → raw records → rule-based extraction → LLM extraction → validation → normalization → deduplication → dataset split → training → evaluation → inference API.
+                    Pipeline: scraper → raw records → rule-based extraction → validation → normalization → quality scoring → export.
+                    All settings were auto-detected from your documents. Click “Customize” to override.
                 </p>
 
                 <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runProcess()"
@@ -955,7 +967,7 @@
 
                 <div class="loading" id="loading-process">
                     <div class="spinner"></div>
-                    <p style="color:var(--text-secondary)">Chunking → Formatting → Scoring...</p>
+                    <p style="color:var(--text-secondary)">Auto-configured processing… Chunking → Formatting → Scoring</p>
                 </div>
             </div>
         </div>
@@ -1037,7 +1049,7 @@
                         <input type="text" id="description" placeholder="Dataset description">
                     </div>
                     <div class="form-group">
-                        <label>Target Model</label>
+                        <label>Target Model <span style="font-size:0.65rem;color:var(--accent-3);font-weight:600;">AUTO-DETECTED</span></label>
                         <select id="target-model">
                             <option value="meta-llama/Meta-Llama-3-8B">Llama 3 8B</option>
                             <option value="mistralai/Mistral-7B-v0.3">Mistral 7B</option>
@@ -1047,7 +1059,7 @@
                         </select>
                     </div>
                     <div class="form-group">
-                        <label>Fine-Tune Method</label>
+                        <label>Fine-Tune Method <span style="font-size:0.65rem;color:var(--accent-3);font-weight:600;">AUTO-DETECTED</span></label>
                         <select id="ft-method">
                             <option value="lora">LoRA</option>
                             <option value="qlora">QLoRA (4-bit)</option>
@@ -1055,6 +1067,7 @@
                         </select>
                     </div>
                 </div>
+                <div id="export-config-reasons" style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.75rem;"></div>
 
                 <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runExport()" id="btn-export">
                     📦 Version & Export
@@ -1299,7 +1312,13 @@
                 show('ingest-results');
                 show('card-config');
                 setStep(2);
-                showAlert('success', `Ingested ${data.total_docs} documents successfully`);
+
+                // ── Auto-populate config from server analysis ──
+                if (data.auto_config) {
+                    applyAutoConfig(data.auto_config);
+                }
+
+                showAlert('success', `Ingested ${data.total_docs} documents — settings auto-configured ✨`);
                 document.getElementById('card-config').scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (err) {
                 showAlert('error', err.message);
@@ -1345,7 +1364,12 @@
                 show('card-results');
                 show('card-export');
                 setStep(4);
-                showAlert('success', `✅ Pipeline complete! ${data.filtered_pairs} quality pairs ready to export. Ollama enhancement is optional.`);
+                showAlert('success', `✅ Pipeline complete! ${data.filtered_pairs} quality pairs ready to export.`);
+
+                // ── Auto-populate export settings from recommendations ──
+                if (data.export_recommendations) {
+                    applyExportRecommendations(data.export_recommendations);
+                }
 
                 // Show enhance card but keep it collapsed — only auto-expand if OLLAMA_ENABLED
                 show('card-enhance');
@@ -1538,6 +1562,92 @@
                 document.getElementById('btn-enhance').disabled = false;
                 document.getElementById('loading-enhance').classList.remove('visible');
             }
+        }
+
+        // ── Auto-Config Functions ──
+        let customizePanelOpen = false;
+
+        function toggleCustomize() {
+            const panel = document.getElementById('customize-panel');
+            const icon = document.getElementById('customize-toggle-icon');
+            customizePanelOpen = !customizePanelOpen;
+            panel.style.display = customizePanelOpen ? 'block' : 'none';
+            icon.textContent = customizePanelOpen ? '▼' : '▶';
+        }
+
+        function renderReasonBadges(containerId, reasons) {
+            const container = document.getElementById(containerId);
+            if (!container || !reasons) return;
+            container.innerHTML = reasons.map(r =>
+                `<span style="display:inline-flex;align-items:center;padding:0.25rem 0.6rem;border-radius:8px;font-size:0.72rem;font-weight:600;background:rgba(56,189,248,0.08);border:1px solid rgba(56,189,248,0.15);color:#38bdf8;white-space:nowrap;">${escapeHtml(r)}</span>`
+            ).join('');
+        }
+
+        function applyAutoConfig(config) {
+            if (!config) return;
+
+            // Set chunking method
+            const chunkMethodEl = document.getElementById('chunk-method');
+            if (config.chunk_method && chunkMethodEl) {
+                chunkMethodEl.value = config.chunk_method;
+            }
+
+            // Set chunk size
+            const chunkSizeEl = document.getElementById('chunk-size');
+            if (config.chunk_size && chunkSizeEl) {
+                chunkSizeEl.value = config.chunk_size;
+            }
+
+            // Set template
+            const templateEl = document.getElementById('template');
+            if (config.template && templateEl) {
+                templateEl.value = config.template;
+            }
+
+            // Set domain
+            const domainEl = document.getElementById('domain');
+            if (config.domain && domainEl) {
+                domainEl.value = config.domain;
+            }
+
+            // Set quality slider
+            const qualityEl = document.getElementById('min-quality');
+            const qualityVal = document.getElementById('quality-val');
+            if (config.min_quality !== undefined && qualityEl) {
+                qualityEl.value = config.min_quality;
+                if (qualityVal) qualityVal.textContent = config.min_quality;
+            }
+
+            // Set model for export card (pre-fill)
+            const targetModelEl = document.getElementById('target-model');
+            if (config.model && targetModelEl) {
+                targetModelEl.value = config.model;
+            }
+
+            // Set fine-tune method for export card (pre-fill)
+            const ftMethodEl = document.getElementById('ft-method');
+            if (config.method && ftMethodEl) {
+                ftMethodEl.value = config.method;
+            }
+
+            // Render reasoning badges
+            renderReasonBadges('auto-config-reasons', config.reasons);
+        }
+
+        function applyExportRecommendations(recs) {
+            if (!recs) return;
+
+            const targetModelEl = document.getElementById('target-model');
+            if (recs.model && targetModelEl) {
+                targetModelEl.value = recs.model;
+            }
+
+            const ftMethodEl = document.getElementById('ft-method');
+            if (recs.method && ftMethodEl) {
+                ftMethodEl.value = recs.method;
+            }
+
+            renderReasonBadges('export-config-reasons', recs.reasons);
         }
 
         // Initial load — only runs history, NO Ollama check on page load
