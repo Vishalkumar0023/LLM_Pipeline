@@ -16,3 +16,6 @@ openpyxl
 pdfplumber
 beautifulsoup4
 requests
+
+# Firecrawl-like scraping engine (optional; requests mode works without it)
+scrapy

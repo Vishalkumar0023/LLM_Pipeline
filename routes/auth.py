@@ -66,11 +66,29 @@ def signup():
 
     if request.method == "POST":
         data = request.get_json() if request.is_json else request.form
-        username = data.get("username")
-        email = data.get("email")
-        password = data.get("password")
+        username = data.get("username", "").strip()
+        email = data.get("email", "").strip()
+        password = data.get("password", "")
 
-        # Validate
+        # SECURITY: Validate inputs before any DB operations
+        import re as _re
+        validation_errors = []
+        if not username or len(username) < 3 or len(username) > 80:
+            validation_errors.append("Username must be 3–80 characters")
+        elif not _re.match(r"^[a-zA-Z0-9_.\-]+$", username):
+            validation_errors.append(
+                "Username may only contain letters, numbers, underscores, dots, hyphens"
+            )
+        if not email or not _re.match(r"^[^@\s]+@[^@\s]+\.[^@\s]+$", email):
+            validation_errors.append("Invalid email address")
+        if not password or len(password) < 8:
+            validation_errors.append("Password must be at least 8 characters")
+        if validation_errors:
+            if request.is_json:
+                return jsonify({"error": "; ".join(validation_errors)}), 400
+            return render_template("auth.html", mode="signup")
+
+        # Validate uniqueness
         if User.query.filter_by(username=username).first():
             if request.is_json:
                 return jsonify({"error": "Username already exists"}), 400

@@ -19,6 +19,10 @@ Modules:
 - finetune_config: LoRA/SFT fine-tuning config generation
 - llm_monitor: Model evaluation monitoring and retraining triggers
 - llm_pipeline: End-to-end LLM data pipeline orchestrator
+- evidence_builder: Layer A deterministic evidence parser
+- dataset_generator: Layer B instruction dataset synthesis
+- verification_agent: Dataset verifier/corrector
+- pipeline_runner: Two-layer end-to-end dataset pipeline
 """
 
 from .data_loader import DataLoader
@@ -90,6 +94,26 @@ def __getattr__(name):
         from .ecommerce_scraper import EcommerceScraper
 
         return EcommerceScraper
+    if name == "EvidenceBuilder":
+        from .evidence_builder import EvidenceBuilder
+
+        return EvidenceBuilder
+    if name == "DatasetGenerator":
+        from .dataset_generator import DatasetGenerator
+
+        return DatasetGenerator
+    if name == "DatasetVerificationAgent":
+        from .verification_agent import DatasetVerificationAgent
+
+        return DatasetVerificationAgent
+    if name == "TwoLayerPipelineRunner":
+        from .pipeline_runner import TwoLayerPipelineRunner
+
+        return TwoLayerPipelineRunner
+    if name == "TwoLayerQualityScorer":
+        from .quality_scorer import TwoLayerQualityScorer
+
+        return TwoLayerQualityScorer
     if name == "EmbeddingEngine":
         from .embedding_engine import EmbeddingEngine
 
@@ -116,4 +140,10 @@ __all__ = [
     "FineTuneConfig",
     "LLMMonitor",
     "EcommerceScraper",
+    # Two-layer architecture modules
+    "EvidenceBuilder",
+    "DatasetGenerator",
+    "DatasetVerificationAgent",
+    "TwoLayerQualityScorer",
+    "TwoLayerPipelineRunner",
 ]

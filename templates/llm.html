@@ -486,7 +486,7 @@
 
         /* ── Result panels ── */
         .result-list {
-            max-height: 300px;
+            max-height: 420px;
             overflow-y: auto;
             border: 1px solid var(--border);
             border-radius: var(--radius-sm);
@@ -497,12 +497,19 @@
             border-bottom: 1px solid var(--border);
             font-size: 0.8125rem;
             display: flex;
-            align-items: center;
-            gap: 0.75rem;
+            flex-direction: column;
+            gap: 0.5rem;
         }
 
         .result-item:last-child {
             border-bottom: none;
+        }
+
+        .result-main {
+            width: 100%;
+            display: flex;
+            align-items: flex-start;
+            gap: 0.75rem;
         }
 
         .result-item .score {
@@ -532,9 +539,84 @@
         .result-item .text {
             flex: 1;
             color: var(--text-secondary);
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
+        .result-item .subtext {
+            margin-top: 0.25rem;
+            color: var(--text-tertiary);
+            font-size: 0.75rem;
+            line-height: 1.35;
+        }
+
+        .pair-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.4rem;
+            margin-left: 3.6rem;
+        }
+
+        .btn-sm {
+            padding: 0.35rem 0.55rem;
+            font-size: 0.75rem;
+            border-radius: 8px;
+        }
+
+        .label-btn.is-accept {
+            border-color: rgba(52, 211, 153, 0.4);
+            color: #34d399;
+            background: rgba(52, 211, 153, 0.08);
+        }
+
+        .label-btn.is-reject {
+            border-color: rgba(248, 113, 113, 0.4);
+            color: #f87171;
+            background: rgba(248, 113, 113, 0.08);
+        }
+
+        .label-btn.is-edit {
+            border-color: rgba(251, 191, 36, 0.4);
+            color: #fbbf24;
+            background: rgba(251, 191, 36, 0.08);
+        }
+
+        .label-toolbar {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            margin: 1rem 0;
+            padding: 0.75rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: rgba(255, 255, 255, 0.02);
+        }
+
+        .label-status {
+            font-size: 0.8125rem;
+            color: var(--text-secondary);
+            font-weight: 600;
+        }
+
+        .include-unlabeled {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            color: var(--text-secondary);
+            font-size: 0.75rem;
+            font-weight: 600;
+        }
+
+        .label-summary {
+            margin: 0.5rem 0 0.75rem;
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            border: 1px solid var(--border);
+            background: rgba(52, 211, 153, 0.06);
+            border-radius: 10px;
+            padding: 0.6rem 0.7rem;
         }
 
         /* ── Alerts ── */
@@ -861,33 +943,10 @@
                     </div>
                 </div>
 
-                <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border);">
-                    <div style="display: flex; align-items: center; gap: 0.5rem; margin-bottom: 1rem;">
-                        <input type="checkbox" id="use-llm"
-                            onchange="document.getElementById('llm-settings').style.display = this.checked ? 'grid' : 'none'">
-                        <label for="use-llm" style="margin: 0; font-weight: 600; color: var(--accent);">✨ Use LLM for
-                            High-Quality Generation (Overrides Chunking)</label>
-                    </div>
-
-                    <div class="form-grid" id="llm-settings" style="display: none;">
-                        <div class="form-group">
-                            <label>LLM Provider</label>
-                            <select id="llm-provider">
-                                <option value="openai">OpenAI</option>
-                                <option value="anthropic">Anthropic</option>
-                                <option value="ollama">Ollama (Local)</option>
-                            </select>
-                        </div>
-                        <div class="form-group">
-                            <label>Model Name</label>
-                            <input type="text" id="llm-model" value="gpt-4o-mini" placeholder="e.g. gpt-4o-mini">
-                        </div>
-                        <div class="form-group full">
-                            <label>API Key (Saved locally only, Optional for Local LLMs)</label>
-                            <input type="password" id="llm-key" placeholder="sk-... (Leave empty for Ollama)">
-                        </div>
-                    </div>
-                </div>
+                <p style="margin-top:1rem; font-size:0.8rem; color:var(--text-secondary);">
+                    Internal pipeline is always enabled:
+                    scraper → raw records → rule-based extraction → LLM extraction → validation → normalization → deduplication → dataset split → training → evaluation → inference API.
+                </p>
 
                 <button class="btn btn-primary btn-full" style="margin-top:1rem" onclick="runProcess()"
                     id="btn-process">
@@ -910,9 +969,53 @@
             </div>
             <div class="card-body">
                 <div class="stats-row" id="result-stats"></div>
+            </div>
+        </div>
 
-                <h3 style="font-size:0.875rem; font-weight:600; margin:1.25rem 0 0.5rem;">Sample Pairs</h3>
-                <div class="result-list" id="result-pairs"></div>
+        <!-- ═══════════ STAGE 3.5: OPTIONAL AI ENHANCEMENT ═══════════ -->
+        <div class="card hidden" id="card-enhance">
+            <div class="card-head" style="cursor:pointer;" onclick="toggleEnhancePanel()">
+                <div class="card-icon" style="background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.15);">🧠</div>
+                <h2>Optional — AI Enhancement</h2>
+                <span class="badge" style="background:rgba(168,85,247,0.12);color:#a855f7;border-color:rgba(168,85,247,0.2);font-weight:700;">OPTIONAL</span>
+                <span class="badge" id="ollama-badge" style="background:rgba(100,100,120,0.15);color:var(--text-tertiary);border-color:rgba(100,100,120,0.2);margin-left:0.25rem;">Not checked</span>
+                <span id="enhance-toggle-icon" style="margin-left:auto;font-size:1.1rem;color:var(--text-tertiary);transition:transform 0.3s;">▶</span>
+            </div>
+            <div class="card-body" id="enhance-panel" style="display:none;">
+                <p style="font-size:0.85rem;color:var(--text-secondary);margin-bottom:0.5rem;">
+                    <strong>This step is optional.</strong> Your dataset is already complete and ready to export.
+                </p>
+                <p style="font-size:0.82rem;color:var(--text-tertiary);margin-bottom:1rem;">
+                    If you have <strong>Ollama</strong> running locally, you can use a local LLM (e.g. DeepSeek-R1, TinyLlama) to verify and enhance generated pairs.
+                    The AI will fact-check each output against the source context and auto-correct any hallucinations.
+                </p>
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label>Ollama Model</label>
+                        <select id="ollama-model">
+                            <option value="tinyllama:latest">tinyllama:latest (fast)</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Max Pairs to Verify</label>
+                        <input type="number" id="enhance-max" value="10" min="1" max="50">
+                    </div>
+                </div>
+
+                <button class="btn btn-full" id="btn-enhance" onclick="runEnhance()" disabled
+                    style="margin-top:1rem;background:linear-gradient(135deg,#a855f7 0%,#6366f1 100%);color:#fff;border:none;font-weight:700;">
+                    🧠 Enhance with Local LLM
+                </button>
+
+                <div class="loading" id="loading-enhance">
+                    <div class="spinner"></div>
+                    <p style="color:var(--text-secondary)">LLM is verifying pairs… This may take a minute.</p>
+                </div>
+
+                <div id="enhance-results" class="hidden" style="margin-top:1rem;">
+                    <div class="stats-row" id="enhance-stats"></div>
+                </div>
             </div>
         </div>
 
@@ -940,6 +1043,7 @@
                             <option value="mistralai/Mistral-7B-v0.3">Mistral 7B</option>
                             <option value="microsoft/Phi-3-mini-4k-instruct">Phi-3 Mini</option>
                             <option value="google/gemma-7b">Gemma 7B</option>
+                            <option value="deepseek-ai/deepseek-r1-8b">DeepSeek-R1 8B</option>
                         </select>
                     </div>
                     <div class="form-group">
@@ -990,7 +1094,6 @@
         let uploadedFiles = [];
         let urls = [];
         let sessionId = null;
-
         // ── Helpers ──
         function showAlert(type, msg) {
             const el = document.getElementById(`alert-${type}`);
@@ -1010,6 +1113,73 @@
 
         function show(id) { document.getElementById(id).classList.remove('hidden'); }
         function hide(id) { document.getElementById(id).classList.add('hidden'); }
+
+        async function readApiJson(resp) {
+            const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+            const raw = await resp.text();
+
+            if (!raw) return {};
+            if (contentType.includes('application/json')) {
+                try { return JSON.parse(raw); } catch (_) { /* fall through */ }
+            }
+
+            const trimmed = raw.trim().toLowerCase();
+            if (trimmed.startsWith('<!doctype') || trimmed.startsWith('<html')) {
+                return {
+                    error: resp.status === 401
+                        ? 'Session expired. Please log in again.'
+                        : `Server returned HTML instead of JSON (HTTP ${resp.status}).`
+                };
+            }
+
+            try { return JSON.parse(raw); } catch (_) {
+                return { error: raw.slice(0, 300) };
+            }
+        }
+
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
+        function normalizeTextValue(value) {
+            if (value === null || value === undefined) return '';
+            if (typeof value === 'object') {
+                try { return JSON.stringify(value); } catch (_) { return String(value); }
+            }
+            return String(value);
+        }
+
+        function toPairDisplay(pair) {
+            const instruction = pair?.instruction
+                || pair?.messages?.[1]?.content
+                || pair?.conversations?.[0]?.value
+                || '';
+            const output = pair?.output
+                || pair?.messages?.[2]?.content
+                || pair?.conversations?.[1]?.value
+                || '';
+            const input = pair?.input || '';
+            return {
+                instruction: normalizeTextValue(instruction),
+                output: normalizeTextValue(output),
+                input: normalizeTextValue(input)
+            };
+        }
+
+        function updateLabelDraftStatus() {
+            // Labeling disabled
+        }
+
+        function renderSamplePairs() {
+            // Labeling disabled/automated.
+        }
+
+        // Labeling API functions removed because they are automated.
 
         // ── File upload ──
         const uploadZone = document.getElementById('upload-zone');
@@ -1047,12 +1217,37 @@
         }
 
         // ── URL ──
+        function splitConcatenatedUrls(raw) {
+            const text = (raw || '').trim();
+            if (!text) return [];
+            const starts = [...text.matchAll(/https?:\/\//gi)].map(m => m.index);
+            if (starts.length <= 1) return [text];
+            const parts = [];
+            for (let i = 0; i < starts.length; i++) {
+                const start = starts[i];
+                const end = i + 1 < starts.length ? starts[i + 1] : text.length;
+                const part = text.slice(start, end).trim();
+                if (part) parts.push(part);
+            }
+            return parts;
+        }
+
         function addUrl() {
             const input = document.getElementById('url-input');
-            const url = input.value.trim();
-            if (!url) return;
-            if (!url.startsWith('http')) { showAlert('error', 'Enter a valid URL starting with http'); return; }
-            urls.push(url);
+            const raw = input.value.trim();
+            if (!raw) return;
+            const parts = splitConcatenatedUrls(raw);
+            let added = 0;
+            for (const url of parts) {
+                if (!url.startsWith('http')) continue;
+                if (urls.includes(url)) continue;
+                urls.push(url);
+                added += 1;
+            }
+            if (added === 0) {
+                showAlert('error', 'Enter a valid URL starting with http');
+                return;
+            }
             input.value = '';
             renderUrlList();
         }
@@ -1088,7 +1283,7 @@
 
             try {
                 const resp = await fetch('/api/llm/ingest', { method: 'POST', body: formData });
-                const data = await resp.json();
+                const data = await readApiJson(resp);
 
                 if (!resp.ok) throw new Error(data.error || 'Ingestion failed');
 
@@ -1124,11 +1319,7 @@
                 chunk_size: parseInt(document.getElementById('chunk-size').value),
                 template: document.getElementById('template').value,
                 domain: document.getElementById('domain').value,
-                min_quality: parseFloat(document.getElementById('min-quality').value),
-                use_llm: document.getElementById('use-llm').checked,
-                llm_provider: document.getElementById('llm-provider').value,
-                llm_model: document.getElementById('llm-model').value,
-                llm_api_key: document.getElementById('llm-key').value
+                min_quality: parseFloat(document.getElementById('min-quality').value)
             };
 
             document.getElementById('btn-process').disabled = true;
@@ -1140,7 +1331,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                const data = await resp.json();
+                const data = await readApiJson(resp);
 
                 if (!resp.ok) throw new Error(data.error || 'Processing failed');
 
@@ -1151,23 +1342,17 @@
                     <div class="si"><div class="val">${data.filtered_pairs}</div><div class="lbl">After Filter</div></div>
                     <div class="si"><div class="val">${data.avg_quality.toFixed(2)}</div><div class="lbl">Avg Quality</div></div>
                 `;
-
-                // Sample pairs
-                const pairsHtml = (data.sample_pairs || []).map(p => {
-                    const s = p.quality?.overall_score || 0;
-                    const cls = s >= 0.6 ? 'score-high' : s >= 0.4 ? 'score-mid' : 'score-low';
-                    const instr = p.instruction || (p.messages?.[1]?.content) || '—';
-                    return `<div class="result-item">
-                        <span class="score ${cls}">${s.toFixed(2)}</span>
-                        <span class="text">${instr.substring(0, 120)}...</span>
-                    </div>`;
-                }).join('');
-                document.getElementById('result-pairs').innerHTML = pairsHtml || '<p style="padding:1rem;color:var(--text-tertiary);">No pairs</p>';
-
                 show('card-results');
                 show('card-export');
                 setStep(4);
-                showAlert('success', `Generated ${data.filtered_pairs} quality pairs from ${data.total_chunks} chunks`);
+                showAlert('success', `✅ Pipeline complete! ${data.filtered_pairs} quality pairs ready to export. Ollama enhancement is optional.`);
+
+                // Show enhance card but keep it collapsed — only auto-expand if OLLAMA_ENABLED
+                show('card-enhance');
+                if (data.ollama_enabled) {
+                    toggleEnhancePanel(true);
+                }
+
                 document.getElementById('card-results').scrollIntoView({ behavior: 'smooth', block: 'start' });
             } catch (err) {
                 showAlert('error', err.message);
@@ -1198,7 +1383,7 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify(payload)
                 });
-                const data = await resp.json();
+                const data = await readApiJson(resp);
 
                 if (!resp.ok) throw new Error(data.error || 'Export failed');
 
@@ -1217,7 +1402,8 @@
 
                 show('export-results');
                 setStep(5);
-                showAlert('success', `Exported ${data.sample_count} samples as v${data.version}`);
+                const modeLabel = data.export_mode === 'labeled_best' ? 'labeled-best' : 'auto-filtered';
+                showAlert('success', `Exported ${data.sample_count} ${modeLabel} samples as ${data.version}`);
 
                 // Refresh monitoring
                 loadRuns();
@@ -1233,7 +1419,7 @@
         async function loadRuns() {
             try {
                 const resp = await fetch('/api/llm/runs');
-                const data = await resp.json();
+                const data = await readApiJson(resp);
 
                 if (data.runs && data.runs.length > 0) {
                     let html = '<table class="runs-table"><thead><tr><th>Run</th><th>Samples</th><th>Avg Quality</th><th>Template</th><th>Date</th></tr></thead><tbody>';
@@ -1254,9 +1440,110 @@
             }
         }
 
-        // Initial load
+        // ── Enhance Panel Toggle ──
+        let enhancePanelOpen = false;
+        let ollamaChecked = false;
+
+        function toggleEnhancePanel(forceOpen) {
+            const panel = document.getElementById('enhance-panel');
+            const icon = document.getElementById('enhance-toggle-icon');
+            if (typeof forceOpen === 'boolean') {
+                enhancePanelOpen = forceOpen;
+            } else {
+                enhancePanelOpen = !enhancePanelOpen;
+            }
+            panel.style.display = enhancePanelOpen ? 'block' : 'none';
+            icon.textContent = enhancePanelOpen ? '▼' : '▶';
+
+            // Lazy-check Ollama only when user first opens the panel
+            if (enhancePanelOpen && !ollamaChecked) {
+                checkOllama();
+            }
+        }
+
+        // ── Ollama Status Check (lazy — called on panel expand) ──
+        async function checkOllama() {
+            const badge = document.getElementById('ollama-badge');
+            badge.textContent = 'Checking…';
+            badge.style.color = 'var(--text-tertiary)';
+            ollamaChecked = true;
+            try {
+                const resp = await fetch('/api/llm/ollama/status');
+                const data = await readApiJson(resp);
+
+                if (data.available) {
+                    badge.textContent = '🟢 Connected';
+                    badge.style.background = 'rgba(52,211,153,0.15)';
+                    badge.style.color = '#34d399';
+                    badge.style.borderColor = 'rgba(52,211,153,0.2)';
+
+                    // Populate model dropdown
+                    const sel = document.getElementById('ollama-model');
+                    if (data.models && data.models.length > 0) {
+                        sel.innerHTML = data.models.map(m =>
+                            `<option value="${m}" ${m === data.default_model ? 'selected' : ''}>${m}</option>`
+                        ).join('');
+                    }
+                    document.getElementById('btn-enhance').disabled = false;
+                } else {
+                    badge.textContent = '🔴 Offline';
+                    badge.style.background = 'rgba(248,113,113,0.15)';
+                    badge.style.color = '#f87171';
+                    badge.style.borderColor = 'rgba(248,113,113,0.2)';
+                    document.getElementById('btn-enhance').disabled = true;
+                }
+            } catch (e) {
+                badge.textContent = '🔴 Offline';
+                badge.style.background = 'rgba(248,113,113,0.15)';
+                badge.style.color = '#f87171';
+                document.getElementById('btn-enhance').disabled = true;
+            }
+        }
+
+        // ── API: LLM Enhancement ──
+        async function runEnhance() {
+            if (!sessionId) { showAlert('error', 'Run the pipeline first'); return; }
+
+            const model = document.getElementById('ollama-model').value;
+            const maxPairs = parseInt(document.getElementById('enhance-max').value) || 10;
+
+            document.getElementById('btn-enhance').disabled = true;
+            document.getElementById('loading-enhance').classList.add('visible');
+
+            try {
+                const resp = await fetch('/api/llm/enhance', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        session_id: sessionId,
+                        model: model,
+                        max_pairs: maxPairs
+                    })
+                });
+                const data = await readApiJson(resp);
+
+                if (!resp.ok) throw new Error(data.error || 'Enhancement failed');
+
+                document.getElementById('enhance-stats').innerHTML = `
+                    <div class="si"><div class="val">${data.enhanced}</div><div class="lbl">Verified</div></div>
+                    <div class="si"><div class="val">${data.failed}</div><div class="lbl">Failed</div></div>
+                    <div class="si"><div class="val">${data.total_pairs}</div><div class="lbl">Total Pairs</div></div>
+                    <div class="si"><div class="val">${data.avg_quality.toFixed(2)}</div><div class="lbl">Avg Quality</div></div>
+                `;
+                show('enhance-results');
+                showAlert('success', `LLM verified ${data.enhanced} pairs using ${data.model_used}`);
+            } catch (err) {
+                showAlert('error', err.message);
+            } finally {
+                document.getElementById('btn-enhance').disabled = false;
+                document.getElementById('loading-enhance').classList.remove('visible');
+            }
+        }
+
+        // Initial load — only runs history, NO Ollama check on page load
         loadRuns();
     </script>
 </body>
 
 </html>
+

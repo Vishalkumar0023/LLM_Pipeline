@@ -24,13 +24,6 @@ export SECRET_KEY="change-me"
 export DATABASE_URL="sqlite:///pipeline_users.db"
 ```
 
-For LLM providers (only needed when `Use LLM` is enabled):
-
-```bash
-export OPENAI_API_KEY="..."
-export ANTHROPIC_API_KEY="..."
-```
-
 ## 2. Run the App
 
 ```bash
@@ -51,7 +44,8 @@ Open:
 4. Stage 2 Process:
 - Choose template (`alpaca`, `chatml`, `sharegpt`).
 - Choose quality threshold (`Min Quality`).
-- Optional: enable `Use LLM` for model-driven generation.
+- Processing uses the internal fixed pipeline:
+  `scraper -> raw records -> rule-based extraction -> LLM extraction -> validation -> normalization -> deduplication -> dataset split -> training -> evaluation -> inference API`
 - E-commerce samples are automatically deduplicated and normalized.
 - E-commerce outputs favor concise structured JSON fields to reduce token cost.
 5. Stage 3 Export:
@@ -115,10 +109,13 @@ Example:
   "chunk_method": "sliding_window",
   "chunk_size": 512,
   "template": "alpaca",
-  "min_quality": 0.4,
-  "use_llm": false
+  "min_quality": 0.4
 }
 ```
+
+### Architecture
+
+`GET /api/llm/architecture`
 
 ### Export
 
@@ -133,15 +130,7 @@ Example:
 }
 ```
 
-## 6. LLM Provider Notes
-
-- `openai`: uses OpenAI Chat Completions API format.
-- `anthropic`: uses Anthropic Messages API.
-- `ollama`: uses local OpenAI-compatible endpoint at `http://localhost:11434/v1`.
-
-For Ollama, API key can be left blank.
-
-## 7. Common Errors and Fixes
+## 6. Common Errors and Fixes
 
 ### "0 pairs passed the quality filter..."
 
@@ -154,20 +143,14 @@ For Ollama, API key can be left blank.
 - For Amazon/Flipkart listing pages, increase `max_pages`.
 - If blocked, try `use_playwright=true`.
 
-### LLM errors (401/403/connection)
-
-- Verify provider API key.
-- Verify provider endpoint availability.
-- For Ollama, ensure local server is running.
-
-## 8. Dataset Quality Behavior (E-commerce)
+## 7. Dataset Quality Behavior (E-commerce)
 
 - Duplicate instructions are capped and exact duplicates are removed.
 - Repeated noise like `off off`, ad phrases, and delivery promo fragments are cleaned.
 - Outputs are length-limited to keep training examples concise.
 - Instruction styles are diversified (extraction, summary, pricing, specs, availability, pros/cons).
 
-## 9. Test Commands
+## 8. Test Commands
 
 ```bash
 pytest -q test_pagination_scraping.py test_ecommerce_quality.py test_llm_processor.py test_llm_pipeline.py test_llm_export.py

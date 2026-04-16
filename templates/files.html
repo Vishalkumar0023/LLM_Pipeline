@@ -378,6 +378,7 @@
                             <th>Type</th>
                             <th>Size</th>
                             <th>Date Modified</th>
+                            <th>Actions</th>
                         </tr>
                     </thead>
                     <tbody id="file-list">
@@ -413,6 +414,15 @@
             return date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
 
+        function escapeHtml(value) {
+            return String(value ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+
         let files = [];
 
         // Load Files
@@ -439,22 +449,33 @@
                 empty.style.display = 'none';
 
                 files.forEach(file => {
-                    const isModel = file.name.endsWith('.pkl');
-                    const icon = isModel ? '🧠' : '📄';
+                    const filePath = file.path || file.name;
+                    const lowerPath = String(filePath || '').toLowerCase();
+                    const isModel = lowerPath.endsWith('.pkl');
+                    const isExport = lowerPath.startsWith('llm_exports/');
+                    const icon = isModel ? '🧠' : (isExport ? '📦' : '📄');
                     const iconClass = isModel ? 'file-icon model' : 'file-icon';
+                    const safePath = encodeURIComponent(filePath);
+                    const location = file.path && file.path !== file.name
+                        ? `<div class="file-meta">${escapeHtml(file.path)}</div>`
+                        : '';
 
                     const row = document.createElement('tr');
                     row.innerHTML = `
-                        <td class="checkbox-cell"><input type="checkbox" class="file-check" value="${file.name}" onchange="updateDeleteBtn()"></td>
+                        <td class="checkbox-cell"><input type="checkbox" class="file-check" value="${safePath}" onchange="updateDeleteBtn()"></td>
                         <td>
                             <div style="display:flex;align-items:center;">
                                 <span class="${iconClass}">${icon}</span>
-                                <span class="file-name">${file.name}</span>
+                                <span class="file-name">${escapeHtml(file.name)}</span>
                             </div>
+                            ${location}
                         </td>
-                        <td class="file-meta" style="text-transform:uppercase;font-size:0.6875rem;font-weight:600;letter-spacing:0.5px;">${file.type || file.name.split('.').pop()}</td>
+                        <td class="file-meta" style="text-transform:uppercase;font-size:0.6875rem;font-weight:600;letter-spacing:0.5px;">${escapeHtml(file.type || String(file.name).split('.').pop())}</td>
                         <td class="file-meta">${formatBytes(file.size)}</td>
                         <td class="file-meta">${formatDate(file.date)}</td>
+                        <td>
+                            <button class="btn" type="button" onclick="downloadFile('${safePath}')">⬇️ Download</button>
+                        </td>
                     `;
                     list.appendChild(row);
                 });
@@ -486,22 +507,50 @@
 
             if (!confirm(`Are you sure you want to delete ${checked.length} file(s)? This cannot be undone.`)) return;
 
-            const filenames = Array.from(checked).map(cb => cb.value);
+            const filenames = Array.from(checked).map(cb => decodeURIComponent(cb.value));
             const btn = document.getElementById('delete-btn');
             btn.innerHTML = '<div class="spinner" style="width:14px;height:14px;margin:0 0.5rem 0 0;border-width:2px;"></div> Deleting...';
             btn.disabled = true;
 
             try {
-                const res = await fetch('/api/delete_files', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ filenames })
-                });
+                async function postDelete() {
+                    return fetch('/api/delete_files', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ filenames })
+                    });
+                }
 
-                const result = await res.json();
+                let res;
+                try {
+                    res = await postDelete();
+                } catch (firstErr) {
+                    // Handle transient dev-server reconnects.
+                    if (String(firstErr).includes('Failed to fetch')) {
+                        await new Promise(resolve => setTimeout(resolve, 900));
+                        res = await postDelete();
+                    } else {
+                        throw firstErr;
+                    }
+                }
+
+                let result = {};
+                try {
+                    result = await res.json();
+                } catch (parseErr) {
+                    throw new Error('Server returned a non-JSON response while deleting files.');
+                }
+
+                if (!res.ok) {
+                    const msg = result.error || (result.errors && result.errors.join('\n')) || `Delete failed with status ${res.status}`;
+                    throw new Error(msg);
+                }
 
                 if (result.errors && result.errors.length > 0) {
                     alert('Partial success:\n' + result.errors.join('\n'));
+                }
+                if (!result.deleted || result.deleted.length === 0) {
+                    alert('No files were deleted. Try refreshing the page and retry.');
                 }
 
                 await loadFiles();
@@ -509,10 +558,17 @@
                 updateDeleteBtn();
 
             } catch (err) {
-                alert('Error deleting files: ' + err);
+                const msg = String(err).includes('Failed to fetch')
+                    ? 'Error deleting files: connection dropped. Please retry once.'
+                    : 'Error deleting files: ' + err;
+                alert(msg);
                 btn.disabled = false;
                 updateDeleteBtn();
             }
+        }
+
+        function downloadFile(encodedPath) {
+            window.location.href = `/api/download_user_file?path=${encodedPath}`;
         }
 
         // Init

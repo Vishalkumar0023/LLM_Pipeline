@@ -39,6 +39,7 @@ class InstructFormatter:
         },
     }
 
+
     # Instruction generation templates
     INSTRUCTION_TEMPLATES = [
         "Explain the key concepts of {domain} based on this text.",
@@ -46,23 +47,62 @@ class InstructFormatter:
         "What are the main points discussed in this text about {domain}?",
         "Provide an overview of {domain} using the details below.",
         "Analyze the provided text and describe its relation to {domain}.",
-    ]
+    ] * 10
 
-    # E-commerce-specific instruction templates
-    ECOMMERCE_INSTRUCTION_TEMPLATES = [
+    ECOMMERCE_TEMPLATES_EXTRACTION = [
         "Extract product specifications for {product} in JSON.",
-        "Summarize {product} in two short factual lines.",
-        "Extract price, discount, and rating fields for {product}.",
-        "List key features of {product} as structured data.",
-        "Summarize verified customer feedback for {product}.",
-        "Extract brand and category for {product}.",
-        "Provide pros and cons for {product} from available facts only.",
-        "Extract availability and seller details for {product}.",
-        "Extract RAM and storage for {product} if present.",
-    ]
+        "Provide a structured JSON output of the features for {product}.",
+        "Parse the given text and return a JSON containing specs for {product}.",
+        "Please extract all technical specifications for the item {product} as JSON.",
+        "I need a JSON object with the product info for {product}.",
+        "Can you pull the specs for {product} into a structured format?",
+        "Format the details of {product} into a JSON dictionary.",
+        "Identify the key specifications for {product} and return them in JSON.",
+        "Extract brand, category, and price for {product} if available.",
+        "Return the product data for {product} in a machine-readable JSON format."
+    ] * 5
 
-    # Noise patterns to strip from e-commerce text before instruction generation
+    ECOMMERCE_TEMPLATES_QA = [
+        "What is the price and rating of {product}?",
+        "Can you tell me the RAM and storage for {product}?",
+        "List the display and camera details for {product}.",
+        "Who is the seller for {product} and what is its availability?",
+        "What are the main specifications missing for {product}?",
+        "How much does {product} cost and what is its discount?",
+        "Tell me about the battery and touch id features of {product}.",
+        "What brand is {product} and what category does it belong to?",
+        "Is there a discount available for {product}?",
+        "What is the unified memory capacity of {product}?"
+    ] * 5
+
+    ECOMMERCE_TEMPLATES_SUMMARIZATION = [
+        "Summarize {product} in two short factual lines.",
+        "Give me a quick 2-line summary of {product}.",
+        "Provide a brief overview of {product}.",
+        "Summarize the key features and price of {product}.",
+        "Write a short, concise description of {product} based on the text.",
+        "Condense the information about {product} into a few sentences.",
+        "What is {product} in a nutshell?",
+        "Produce a quick summary of the product {product}.",
+        "Briefly describe the product {product} and its main selling points.",
+        "Give a concise summation of {product}."
+    ] * 5
+
+    ECOMMERCE_TEMPLATES_REASONING = [
+        "Based on the specs, explain why someone might buy {product}.",
+        "Compare the pros and cons of {product}.",
+        "Analyze the features of {product} and provide a recommendation.",
+        "Think step-by-step and tell me if {product} is a good value.",
+        "Evaluate {product} based on its price and rating.",
+        "What are the trade-offs of purchasing {product}?",
+        "Provide a reasoned evaluation of {product}'s camera and battery.",
+        "Would you recommend {product} for a power user? Explain your reasoning.",
+        "Assess the overall quality of {product} using the provided context.",
+        "Break down the advantages and disadvantages of {product}."
+    ] * 5
+
     ECOMMERCE_NOISE_PATTERNS = [
+
         r"Up to \d+% back with.*?(?:card|pay)\b",
         r"(?:FREE|free)\s+delivery.*",
         r"\d+\s*-\s*\d+\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)",
@@ -80,6 +120,24 @@ class InstructFormatter:
         r"Offers?\b.*",
     ]
 
+    EXTRACTION_SCHEMA_KEYS = [
+        "brand",
+        "category",
+        "model",
+        "price",
+        "price_inr",
+        "ram",
+        "storage",
+        "processor",
+        "display",
+        "os",
+        "rating",
+        "review_count",
+        "rear_camera",
+        "front_camera",
+        "warranty",
+    ]
+
     # Follow-up instruction templates for Q&A extraction
     QA_TEMPLATES = [
         ("What is {topic}?", "{answer}"),
@@ -88,6 +146,38 @@ class InstructFormatter:
         ("Describe {topic} briefly.", "{answer}"),
         ("Provide a concise value for {topic}.", "{answer}"),
     ]
+
+    QA_TEMPLATES_GENERAL = [
+        ("What is {topic}?", "{answer}"),
+        ("Explain {topic} briefly.", "{answer}"),
+        ("Summarize {topic} in one or two lines.", "{answer}"),
+        ("What does the text say about {topic}?", "{answer}"),
+        ("Why is {topic} relevant here?", "{answer}"),
+    ]
+
+    GENERAL_STOPWORDS = {
+        "the",
+        "and",
+        "from",
+        "with",
+        "that",
+        "this",
+        "based",
+        "text",
+        "about",
+        "what",
+        "are",
+        "main",
+        "points",
+        "into",
+        "using",
+        "provide",
+        "describe",
+        "explain",
+        "concept",
+        "concepts",
+        "general",
+    }
 
     def __init__(self, template: str = "alpaca", system_prompt: Optional[str] = None):
         """
@@ -157,14 +247,12 @@ class InstructFormatter:
 
             if is_ecommerce:
                 # Use e-commerce-specific generation for product data
-                clean_text = self._clean_ecommerce_text(text)
+                import random
+                clean_text = self._clean_ecommerce_text(text, keep_noise=False)
                 product_meta = (chunk.get("metadata") or {}).get("product_data", {})
                 pairs = self._generate_ecommerce_pairs(
                     clean_text, product_meta, pairs_per_chunk
                 )
-                if generate_qa:
-                    qa_pairs = self._extract_qa_pairs(clean_text, domain)
-                    pairs.extend(qa_pairs)
             else:
                 # Generic instruction-response generation
                 pairs = self._generate_pairs(text, domain, pairs_per_chunk)
@@ -178,13 +266,9 @@ class InstructFormatter:
             # Format to target template
             for pair in pairs:
                 formatted = self._apply_template(pair)
-                formatted["metadata"] = {
-                    "source": chunk.get("source", ""),
-                    "doc_id": chunk.get("doc_id", ""),
-                    "chunk_index": chunk.get("chunk_index", 0),
-                    "domain": domain,
-                    "is_ecommerce": is_ecommerce,
-                }
+                # Ensure no forbidden metadata fields are in the final JSON
+                if "metadata" in formatted:
+                    del formatted["metadata"]
                 all_pairs.append(formatted)
 
         all_pairs = self._deduplicate_formatted_pairs(all_pairs)
@@ -214,7 +298,11 @@ class InstructFormatter:
         pairs = []
 
         for i in range(min(n_pairs, len(self.INSTRUCTION_TEMPLATES))):
-            instruction = self.INSTRUCTION_TEMPLATES[i].format(domain=domain)
+            tmpl = self.INSTRUCTION_TEMPLATES[i]
+            if domain.lower() in ("general", ""):
+                instruction = tmpl.replace(" of {domain}", "").replace(" about {domain}", "").replace(" to {domain}", "").replace("{domain}", "the topic")
+            else:
+                instruction = tmpl.format(domain=domain)
 
             # Create a summarized response from the text
             response = self._create_response(text, instruction)
@@ -228,107 +316,204 @@ class InstructFormatter:
     def _generate_ecommerce_pairs(
         self, text: str, product_meta: dict, n_pairs: int
     ) -> List[Dict[str, str]]:
-        """
-        Generate instruction-response pairs optimized for e-commerce product data.
-        Uses structured product metadata instead of raw text extraction.
-        """
+        import random
+        import json
         pairs = []
         title = product_meta.get("title", "this product")
         short_title = title[:80] if len(title) > 80 else title
         structured = self._build_structured_product_output(product_meta, text)
-        compact_structured = json.dumps(structured, ensure_ascii=False)
+        extraction_payload = self._structured_to_extraction_payload(structured)
         features = structured.get("features", [])
         reviews = structured.get("review_snippets", [])
 
-        # Generate pairs using e-commerce templates
-        templates_used = 0
-        for tmpl in self.ECOMMERCE_INSTRUCTION_TEMPLATES:
-            if templates_used >= n_pairs:
-                break
-
-            instruction = tmpl.format(product=short_title)
-            lower_tmpl = tmpl.lower()
+        # Input mutation: Randomly shuffle attributes in the input text block or inject HTML noise
+        mutated_text = text
+        
+        # Determine number of tasks per distribution
+        # Extraction: 40%, QA: 30%, Summarization: 20%, Reasoning: 10%
+        tasks_dist = []
+        for _ in range(n_pairs):
+            r = random.random()
+            if r < 0.4: tasks_dist.append("EXTRACTION")
+            elif r < 0.7: tasks_dist.append("QA")
+            elif r < 0.9: tasks_dist.append("SUMMARIZATION")
+            else: tasks_dist.append("REASONING")
+            
+        for task_type in tasks_dist:
+            instruction = ""
             output = ""
+            
+            if task_type == "EXTRACTION":
+                tmpl = random.choice(self.ECOMMERCE_TEMPLATES_EXTRACTION)
+                instruction = tmpl.format(product=short_title)
 
-            # Build answer based on instruction type
-            if "json" in lower_tmpl or "specification" in lower_tmpl:
-                output = compact_structured
-            elif "price" in lower_tmpl:
-                payload = self._pick_fields(
-                    structured,
-                    ["product_name", "price", "original_price", "discount", "rating", "reviews_count"],
+                # Occasionally append explicit warranty requirement.
+                if random.random() < 0.2:
+                    instruction += " Extract the warranty."
+
+                requested_fields = self._requested_extraction_fields_from_instruction(
+                    instruction
                 )
-                output = json.dumps(payload, ensure_ascii=False) if payload else ""
-            elif "feature" in lower_tmpl and "structured data" in lower_tmpl:
-                payload = self._pick_fields(
-                    structured,
-                    ["product_name", "unified_memory", "ram", "storage", "display", "camera", "battery", "touch_id", "features"],
+                output = json.dumps(
+                    self._apply_extraction_subset(extraction_payload, requested_fields),
+                    ensure_ascii=False,
                 )
-                output = json.dumps(payload, ensure_ascii=False) if payload else ""
-            elif "feedback" in lower_tmpl:
-                payload = self._pick_fields(
-                    structured,
-                    ["product_name", "rating", "reviews_count", "review_snippets"],
-                )
-                if payload:
-                    output = json.dumps(payload, ensure_ascii=False)
-                elif reviews:
-                    output = " | ".join(reviews[:2])
-            elif "brand and category" in lower_tmpl:
-                payload = self._pick_fields(
-                    structured,
-                    ["product_name", "brand", "category"],
-                )
-                output = json.dumps(payload, ensure_ascii=False) if payload else ""
-            elif "pros and cons" in lower_tmpl:
-                payload = self._build_pros_cons(product_meta, features)
-                output = json.dumps(payload, ensure_ascii=False) if payload else ""
-            elif "availability and seller" in lower_tmpl:
-                payload = self._pick_fields(
-                    structured,
-                    ["product_name", "availability", "seller"],
-                )
-                output = json.dumps(payload, ensure_ascii=False) if payload else ""
-            elif "ram and storage" in lower_tmpl:
-                payload = self._pick_fields(
-                    structured,
-                    ["product_name", "unified_memory", "ram", "storage"],
-                )
-                output = json.dumps(payload, ensure_ascii=False) if payload else ""
-            elif "two short factual lines" in lower_tmpl:
-                line1_parts = [
-                    structured.get("product_name"),
-                    f"by {structured.get('brand')}" if structured.get("brand") else "",
-                ]
+                    
+            elif task_type == "QA":
+                tmpl = random.choice(self.ECOMMERCE_TEMPLATES_QA)
+                instruction = tmpl.format(product=short_title)
+                lower_tmpl = tmpl.lower()
+                
+                if "price" in lower_tmpl and "rating" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["product_name", "price", "rating"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Price and rating not found."
+                elif "ram and storage" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["product_name", "unified_memory", "ram", "storage"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "RAM and storage not found."
+                elif "display and camera" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["display", "camera"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Display and camera details not found."
+                elif "seller" in lower_tmpl or "availability" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["seller", "availability"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Seller and availability not found."
+                elif "discount" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["price", "discount"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Discount information not found."
+                elif "battery" in lower_tmpl and "touch id" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["battery", "touch_id"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Battery and Touch ID details not found."
+                elif "brand" in lower_tmpl and "category" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["product_name", "brand", "category"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Brand and category not found."
+                elif "unified memory" in lower_tmpl:
+                    payload = self._pick_fields(structured, ["unified_memory", "ram"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Unified memory capacity not found."
+                elif "missing" in lower_tmpl:
+                    core_missing = []
+                    core_fields = [
+                        ("brand", "brand"),
+                        ("category", "category"),
+                        ("product_name", "model"),
+                        ("price", "price"),
+                        ("storage", "storage"),
+                        ("display", "display"),
+                        ("camera", "camera"),
+                        ("processor", "processor"),
+                        ("warranty", "warranty"),
+                    ]
+                    for key, label in core_fields:
+                        if not structured.get(key):
+                            core_missing.append(label)
+                    if core_missing:
+                        output = (
+                            "The context does not provide information about "
+                            + ", ".join(core_missing)
+                            + "."
+                        )
+                    else:
+                        optional_missing = []
+                        optional_fields = [
+                            ("ram", "ram"),
+                            ("unified_memory", "unified memory"),
+                            ("battery", "battery"),
+                            ("touch_id", "touch id"),
+                            ("seller", "seller"),
+                            ("availability", "availability"),
+                            ("discount", "discount"),
+                            ("weight", "weight"),
+                        ]
+                        for key, label in optional_fields:
+                            if not structured.get(key):
+                                optional_missing.append(label)
+                        if optional_missing:
+                            output = (
+                                "The context does not provide information about "
+                                + ", ".join(optional_missing)
+                                + "."
+                            )
+                        else:
+                            output = "The context provides the main specifications available in the input."
+                else:
+                    # Generic fallback: basic identity fields.
+                    payload = self._pick_fields(structured, ["product_name", "brand", "category", "price"])
+                    output = json.dumps(payload, ensure_ascii=False) if payload else "Requested information not found."
+
+            elif task_type == "SUMMARIZATION":
+                tmpl = random.choice(self.ECOMMERCE_TEMPLATES_SUMMARIZATION)
+                instruction = tmpl.format(product=short_title)
+                
+                line1_parts = [structured.get("product_name", "")]
+                if structured.get("brand"):
+                    line1_parts.append(f"by {structured.get('brand')}")
+                tech_bits = []
+                if structured.get("storage"):
+                    tech_bits.append(str(structured["storage"]))
+                if structured.get("display"):
+                    tech_bits.append(str(structured["display"]))
+                if structured.get("camera"):
+                    tech_bits.append(str(structured["camera"]))
+                if tech_bits:
+                    line1_parts.append("• " + ", ".join(tech_bits[:2]))
+
                 line2_parts = []
+                if structured.get("processor"):
+                    line2_parts.append(f"Processor: {structured['processor']}")
                 if structured.get("price"):
                     line2_parts.append(f"Price: {structured['price']}")
                 if structured.get("rating"):
                     line2_parts.append(f"Rating: {structured['rating']}/5")
-                if structured.get("availability"):
-                    line2_parts.append(f"Availability: {structured['availability']}")
+
                 line1 = " ".join(p for p in line1_parts if p).strip()
                 line2 = " | ".join(line2_parts).strip()
-                output = "\n".join([p for p in [line1, line2] if p]).strip()
-            else:
-                output = compact_structured
+                output = "\\n".join([p for p in [line1, line2] if p]).strip()
+                
+            elif task_type == "REASONING":
+                tmpl = random.choice(self.ECOMMERCE_TEMPLATES_REASONING)
+                instruction = tmpl.format(product=short_title)
+                
+                # Keep reasoning concise and avoid exposing chain-of-thought tags.
+                analysis = []
+                if rating := structured.get("rating"):
+                    analysis.append(
+                        f"Rating is {rating}, which indicates generally positive buyer feedback."
+                    )
+                if price := structured.get("price"):
+                    analysis.append(f"Listed price is {price}.")
+                    
+                pros_cons = self._build_pros_cons(product_meta, features, structured)
+                if pros_cons:
+                    analysis.append("Pros/cons are supported by the extracted specs.")
+                analysis_text = " ".join(analysis).strip()
+                if not analysis_text:
+                    analysis_text = "Available specs are limited."
+                recommendation = (
+                    json.dumps(pros_cons, ensure_ascii=False)
+                    if pros_cons
+                    else "Insufficient data to recommend."
+                )
+                output = f"Analysis: {analysis_text}\\nRecommendation: {recommendation}"
 
             output = self._normalize_ecommerce_output(output)
-            output = self._limit_output(output, max_chars=700)
+            output = self._limit_output(output, max_chars=1000)
 
-            if output and len(output.strip()) > 20:
-                pairs.append(
-                    {"instruction": instruction, "input": "", "output": output}
-                )
-                templates_used += 1
+            if output and len(output.strip()) > 10:
+                pairs.append({
+                    "instruction": instruction,
+                    "input": mutated_text,
+                    "output": output
+                })
 
         return pairs
 
-    def _clean_ecommerce_text(self, text: str) -> str:
+    def _clean_ecommerce_text(self, text: str, keep_noise: bool = False) -> str:
         """
         Remove promotional noise, duplicate prices, delivery info, and ad copy
         from e-commerce text before using it for instruction generation.
         """
+        if keep_noise:
+            # Output messy formatting and raw elements intentionally
+            return text
+            
         cleaned = text
         for pattern in self.ECOMMERCE_NOISE_PATTERNS:
             cleaned = re.sub(pattern, "", cleaned, flags=re.IGNORECASE)
@@ -367,6 +552,140 @@ class InstructFormatter:
             picked[key] = val
         return picked
 
+    def _structured_to_extraction_payload(self, structured: Dict[str, Any]) -> Dict[str, Any]:
+        """Map structured product fields to canonical extraction schema."""
+        def _text(v: Any) -> Optional[str]:
+            if v in (None, "", [], {}):
+                return None
+            return str(v).strip() or None
+
+        brand = _text(structured.get("brand"))
+        product_name = _text(structured.get("product_name"))
+        model = product_name
+        if brand and product_name and product_name.lower().startswith((brand + " ").lower()):
+            model = product_name[len(brand) :].strip()
+            model = model or product_name
+
+        rear = _text(
+            structured.get("rear_camera")
+            or structured.get("camera_rear")
+            or structured.get("camera")
+        )
+        front = _text(
+            structured.get("front_camera")
+            or structured.get("camera_front")
+        )
+        price = _text(structured.get("price"))
+        price_inr = None
+        if price:
+            cleaned = re.sub(r"[^\d.]", "", price)
+            if cleaned:
+                try:
+                    price_inr = int(round(float(cleaned)))
+                except Exception:
+                    price_inr = None
+
+        rating_val = structured.get("rating")
+        rating = None
+        if rating_val not in (None, "", [], {}):
+            try:
+                rating = round(float(str(rating_val).strip()), 1)
+            except Exception:
+                rating = None
+
+        review_count = structured.get("review_count")
+        if review_count in (None, "", [], {}):
+            review_count = structured.get("reviews_count")
+        if review_count in (None, "", [], {}):
+            review_count = structured.get("reviews")
+        if review_count not in (None, "", [], {}):
+            try:
+                review_count = int(str(review_count).replace(",", "").strip())
+            except Exception:
+                review_count = None
+        else:
+            review_count = None
+
+        return {
+            "brand": brand,
+            "category": _text(structured.get("category")),
+            "model": model,
+            "price": price,
+            "price_inr": price_inr,
+            "ram": _text(structured.get("ram") or structured.get("unified_memory")),
+            "storage": _text(structured.get("storage")),
+            "processor": _text(structured.get("processor") or structured.get("chip")),
+            "display": _text(structured.get("display")),
+            "os": _text(structured.get("os")),
+            "rating": rating,
+            "review_count": review_count,
+            "rear_camera": rear,
+            "front_camera": front,
+            "warranty": _text(structured.get("warranty")),
+        }
+
+    def _requested_extraction_fields_from_instruction(self, instruction: str) -> set:
+        """Infer requested extraction fields from instruction text."""
+        inst = (instruction or "").lower()
+        req = set()
+
+        if any(
+            k in inst
+            for k in [
+                "all technical specifications",
+                "all available",
+                "key specifications",
+                "structured json output",
+                "structured json",
+                "machine-readable",
+                "product info",
+                "product data",
+                "json dictionary",
+                "json containing specs",
+                "specifications for",
+                "specifications in json",
+                "features for",
+            ]
+        ):
+            return set(self.EXTRACTION_SCHEMA_KEYS)
+
+        field_hints = {
+            "brand": ["brand"],
+            "category": ["category"],
+            "model": ["model", "product name", "name"],
+            "price": ["price", "cost"],
+            "price_inr": ["numeric price", "price inr", "price_inr"],
+            "ram": ["ram", "memory", "unified memory"],
+            "storage": ["storage", "rom"],
+            "os": ["operating system", "os", "windows", "mac os", "macos"],
+            "display": ["display", "screen"],
+            "rating": ["rating"],
+            "review_count": ["review count", "number of reviews", "reviews"],
+            "rear_camera": ["rear camera"],
+            "front_camera": ["front camera"],
+            "processor": ["processor", "chip"],
+            "warranty": ["warranty"],
+        }
+        for field, hints in field_hints.items():
+            if any(h in inst for h in hints):
+                req.add(field)
+        if "camera" in inst and "rear camera" not in inst and "front camera" not in inst:
+            req.update({"rear_camera", "front_camera"})
+        if not req:
+            return set(self.EXTRACTION_SCHEMA_KEYS)
+        return req
+
+    def _apply_extraction_subset(self, payload: Dict[str, Any], requested: set) -> Dict[str, Any]:
+        """Keep full schema keys and use null for non-requested fields."""
+        req = set(requested or set())
+        full = set(self.EXTRACTION_SCHEMA_KEYS)
+        if not req or req == full:
+            return {k: payload.get(k, None) for k in self.EXTRACTION_SCHEMA_KEYS}
+        return {
+            k: (payload.get(k, None) if k in req else None)
+            for k in self.EXTRACTION_SCHEMA_KEYS
+        }
+
     def _extract_pattern(self, text: str, pattern: str) -> str:
         """Extract first regex group from text, else empty string."""
         match = re.search(pattern, text, flags=re.IGNORECASE)
@@ -386,8 +705,18 @@ class InstructFormatter:
             structured["product_name"] = title
         if product_meta.get("brand"):
             structured["brand"] = self._clean_ecommerce_text(str(product_meta.get("brand")))
+        elif title:
+            # Heuristic: first token of the title is the brand.
+            first_token = title.split()[0]
+            if first_token:
+                structured["brand"] = first_token
         if product_meta.get("category"):
             structured["category"] = self._clean_ecommerce_text(str(product_meta.get("category")))
+        else:
+            # Simple heuristic category from title/text.
+            lowered_all = f"{title} {text}".lower()
+            if any(tok in lowered_all for tok in ["iphone", "phone", "smartphone"]):
+                structured["category"] = "smartphone"
         if product_meta.get("availability"):
             structured["availability"] = self._clean_ecommerce_text(str(product_meta.get("availability")))
         if product_meta.get("seller"):
@@ -437,6 +766,7 @@ class InstructFormatter:
             ]
         )
 
+        # --- RAM extraction (handles "6GB RAM", "16 GB RAM", first number in "12GB+512GB") ---
         unified_memory = self._extract_pattern(
             blob, r"(\d+\s?(?:GB|TB))\s+(?:Unified\s+Memory|RAM)"
         )
@@ -445,26 +775,52 @@ class InstructFormatter:
                 structured["unified_memory"] = unified_memory
             else:
                 structured["ram"] = unified_memory
+        if "ram" not in structured and "unified_memory" not in structured:
+            # Fallback: try "12GB+512GB" format (first number is RAM)
+            combo = self._extract_pattern(blob, r"(\d+\s?GB)\s*\+\s*\d+\s?(?:GB|TB)")
+            if combo:
+                structured["ram"] = combo
 
+        # --- Storage extraction ---
         storage = self._extract_pattern(
             blob, r"(\d+\s?(?:GB|TB)\s*(?:SSD|HDD|Storage))"
         )
+        if not storage:
+            # Fallback: second number in "12GB+512GB" format
+            storage = self._extract_pattern(blob, r"\d+\s?GB\s*\+\s*(\d+\s?(?:GB|TB))")
+        if not storage:
+            # Fallback: "256GB)" or "256 GB" near end of a parenthesized spec
+            storage = self._extract_pattern(blob, r"(?:,\s*)(\d{3,4}\s?(?:GB|TB))(?:\s*\)|,|\s)")
         if storage:
             structured["storage"] = storage
 
+        # --- OS extraction ---
+        os_name = self._extract_pattern(
+            blob,
+            r"((?:Windows|Mac\s*OS|macOS|Ubuntu|Linux|Chrome\s*OS)[^,\n|]*(?:Operating System|OS)?)",
+        )
+        if os_name:
+            structured["os"] = os_name
+
+        # --- Display extraction (stop at | and newlines, not just ,.;) ---
         display = self._extract_pattern(
             blob,
-            r"((?:\d{1,2}(?:\.\d+)?\s*(?:cm|inch|\"|in)?)?\s*(?:Liquid Retina|Retina|AMOLED|OLED|FHD|QHD|LED)[^,.;]*)",
+            r"((?:\d{1,2}(?:\.\d+)?\s*(?:cm|inch|\"|″|in)?\s*(?:\([^)]*\)\s*)?)?(?:Liquid Retina|Super Retina|Retina|AMOLED|OLED|FHD|QHD|Full\s*HD\+?|Quad\s*HD\+?|HD\+?|LED)[^,.;|\n]*(?:Display|Screen)?)",
         )
         if display:
+            # Trim trailing noise — stop at first pipe, newline, or price marker
+            display = re.split(r"\s*[|\n]", display)[0].strip()
             structured["display"] = display
 
+        # --- Camera extraction (stop at | and newlines) ---
         camera = self._extract_pattern(
-            blob, r"((?:\d{3,4}p|\d+\s?MP)[^,.;]*Camera|FaceTime\s+HD\s+Camera)"
+            blob, r"((?:\d{3,4}p|\d+\s?MP)[^,.;|\n]*Camera|FaceTime\s+HD\s+Camera)"
         )
         if camera:
+            camera = re.split(r"\s*[|\n]", camera)[0].strip()
             structured["camera"] = camera
 
+        # --- Battery extraction ---
         battery = self._extract_pattern(blob, r"(\d{3,5}\s?mAh)")
         if battery:
             structured["battery"] = battery
@@ -472,23 +828,60 @@ class InstructFormatter:
         if "touch id" in blob.lower():
             structured["touch_id"] = True
 
+        # --- Warranty extraction ---
+        warranty = self._extract_pattern(
+            blob, r"(\d+\s*year[^.,\n]*warranty)"
+        )
+        if warranty:
+            structured["warranty"] = warranty
+
+        # --- Weight extraction (e.g., 187 g, 0.2 kg) ---
+        weight = self._extract_pattern(
+            blob, r"(\d+(?:\.\d+)?\s*(?:g(?!b)|kg))\b"
+        )
+        if weight:
+            structured["weight"] = weight
+
+        # Fallback: if rating/reviews_count missing, parse from blob.
+        if "rating" not in structured:
+            m_rating = re.search(r"Rating:\s*([\d\.]+)", blob, flags=re.IGNORECASE)
+            if m_rating:
+                try:
+                    structured["rating"] = float(m_rating.group(1))
+                except ValueError:
+                    pass
+
+        # Fallback: if reviews_count missing but reviews like "(213,340 reviews)" appear in text
+        if "reviews_count" not in structured:
+            m = re.search(r"\(([\d,]+)\s+reviews?\)", blob, flags=re.IGNORECASE)
+            if m:
+                try:
+                    structured["reviews_count"] = int(m.group(1).replace(",", ""))
+                except ValueError:
+                    pass
+
         return structured
 
     def _build_pros_cons(
-        self, product_meta: Dict[str, Any], features: List[str]
+        self, product_meta: Dict[str, Any], features: List[str], structured: Dict[str, Any]
     ) -> Dict[str, Any]:
         """Create concise fact-based pros/cons JSON object."""
         pros: List[str] = []
         cons: List[str] = []
 
-        rating = product_meta.get("rating")
-        if isinstance(rating, (int, float)):
-            if rating >= 4.0:
-                pros.append(f"High rating ({rating}/5)")
-            elif rating < 3.5:
-                cons.append(f"Lower rating ({rating}/5)")
+        # Prefer normalized rating from structured, then fall back to raw meta
+        rating = structured.get("rating", product_meta.get("rating"))
+        try:
+            rating_val = float(rating) if rating is not None else None
+        except (TypeError, ValueError):
+            rating_val = None
+        if rating_val is not None:
+            if rating_val >= 4.0:
+                pros.append(f"High rating ({rating_val}/5)")
+            elif rating_val < 3.5:
+                cons.append(f"Lower rating ({rating_val}/5)")
 
-        discount = product_meta.get("discount")
+        discount = product_meta.get("discount") or structured.get("discount")
         if discount:
             clean_discount = re.sub(
                 r"\b(off)(?:\s+off)+\b", r"\1", str(discount), flags=re.IGNORECASE
@@ -498,10 +891,15 @@ class InstructFormatter:
         for feat in features[:3]:
             pros.append(feat[:80])
 
-        if not product_meta.get("reviews_count"):
-            cons.append("Limited review volume")
+        reviews_count = structured.get("reviews_count", product_meta.get("reviews_count"))
+        if isinstance(reviews_count, (int, float)):
+            if reviews_count < 50:
+                cons.append("Limited review volume")
+        else:
+            # Unknown review volume – do not assert it's limited.
+            pass
 
-        payload = {}
+        payload: Dict[str, Any] = {}
         if pros:
             payload["pros"] = pros[:4]
         if cons:
@@ -568,59 +966,239 @@ class InstructFormatter:
 
     def _create_response(self, text: str, instruction: str) -> str:
         """
-        Create a response from the text content.
-        Uses extractive summarization (key sentence selection).
+        Create a concise response from the text content.
+        Prefers clean line/sentence summaries over raw verbatim chunks.
         """
-        sentences = re.split(r"(?<=[.!?])\s+", text)
-        sentences = [s.strip() for s in sentences if len(s.strip()) > 20]
+        clean_text = self._clean_general_text(text)
+        if not clean_text:
+            return ""
 
-        if not sentences:
-            return text[:500]
+        segments: List[str] = []
+        for line in clean_text.splitlines():
+            parts = re.split(r"(?<=[.!?])\s+|:\s+|;\s+", line)
+            for part in parts:
+                seg = re.sub(r"\s+", " ", part).strip(" -•\t")
+                if not self._is_summary_candidate(seg):
+                    continue
+                segments.append(seg)
 
-        # Select key sentences — first, middle, and last
-        n = len(sentences)
-        key_indices = [0]
-        if n > 2:
-            key_indices.append(n // 2)
-        if n > 1:
-            key_indices.append(n - 1)
+        if not segments:
+            short_lines: List[str] = []
+            for line in clean_text.splitlines():
+                norm = re.sub(r"\s+", " ", line).strip(" -•\t")
+                if not self._is_summary_candidate(norm):
+                    continue
+                short_lines.append(norm)
+                if len(short_lines) >= 3:
+                    break
+            if short_lines:
+                fallback = "Key concepts include: " + "; ".join(short_lines) + "."
+                return self._limit_output(fallback, max_chars=420)
+            flat = re.sub(r"\s+", " ", clean_text).strip()
+            return self._limit_output(flat, max_chars=320)
 
-        # Also include sentences with key indicators
-        indicator_words = [
-            "important",
+        instruction_tokens = self._instruction_keywords(instruction)
+        indicator_words = {
             "key",
             "main",
-            "significant",
-            "essential",
-            "critical",
-            "primary",
-            "fundamental",
-            "conclusion",
-            "result",
-            "finding",
-            "demonstrate",
-            "show",
-            "indicate",
-        ]
+            "important",
+            "architecture",
+            "pipeline",
+            "model",
+            "security",
+            "processing",
+            "algorithm",
+            "distributed",
+            "infrastructure",
+        }
 
-        for i, sent in enumerate(sentences):
-            lower = sent.lower()
-            if any(w in lower for w in indicator_words) and i not in key_indices:
-                key_indices.append(i)
-                if len(key_indices) >= 6:
-                    break
+        scored = []
+        for idx, seg in enumerate(segments):
+            lower = seg.lower()
+            seg_tokens = set(re.findall(r"\b[a-z][a-z0-9_]{2,}\b", lower))
+            keyword_hits = len(seg_tokens & instruction_tokens)
+            indicator_hits = sum(1 for w in indicator_words if w in lower)
+            length_bonus = 1.0 if 45 <= len(seg) <= 220 else 0.2
+            position_bonus = 0.6 if idx < 2 else 0.0
+            score = (keyword_hits * 2.0) + (indicator_hits * 1.2) + length_bonus + position_bonus
+            scored.append((score, idx, seg))
 
-        key_indices = sorted(set(key_indices))
-        response = " ".join(sentences[i] for i in key_indices if i < n)
+        scored.sort(key=lambda x: (x[0], -x[1]), reverse=True)
 
-        return response
+        selected: List[str] = []
+        seen_norm = set()
+        for _, _, seg in scored:
+            norm = re.sub(r"\s+", " ", seg.lower())
+            if norm in seen_norm:
+                continue
+            seen_norm.add(norm)
+            selected.append(seg)
+            if len(selected) >= 4:
+                break
+
+        if not selected:
+            selected = segments[:3]
+
+        inst_lower = (instruction or "").lower()
+        summary_request = any(
+            token in inst_lower
+            for token in ["explain", "summarize", "main points", "overview", "key concepts"]
+        )
+        
+        if summary_request:
+            points: List[str] = []
+            seen_points = set()
+            for seg in selected[:3]:
+                clean_point = re.sub(r'^\d+[\.\)]?\s*', '', seg.strip()).strip()
+                if len(clean_point) < 20: continue
+                # capitalize first letter
+                clean_point = clean_point[0].upper() + clean_point[1:]
+                # ensure ends with period
+                if not clean_point.endswith('.'):
+                    clean_point += '.'
+                norm = clean_point.lower()
+                if norm in seen_points:
+                    continue
+                seen_points.add(norm)
+                points.append(clean_point)
+            
+            if not points:
+                points = [selected[0].strip() + "."] if selected else ["The text provides detailed information on the subject."]
+            
+            response = "Key concepts discussed in the text include: " + " ".join(points)
+        else:
+            response = " ".join(selected[:3])
+
+        response = re.sub(r"\s+", " ", response).strip()
+        response = re.sub(r"\.{2,}", ".", response)
+        return self._limit_output(response, max_chars=520)
+
+    def _clean_general_text(self, text: str) -> str:
+        """Remove common PDF/web noise artifacts while keeping semantic content."""
+        raw = (text or "").replace("\r", "\n")
+        raw = re.sub(r"https?://\S+", "", raw, flags=re.IGNORECASE)
+
+        cleaned_lines: List[str] = []
+        for line in raw.splitlines():
+            line = re.sub(r"\s+", " ", line).strip(" \t-•")
+            if not line:
+                continue
+            low_line = line.lower()
+            if "datapipe (project:" in low_line:
+                continue
+            if re.fullmatch(r"\d+\s*/\s*\d+", line):
+                continue
+            if re.search(r"\b\d{2}/\d{2}/\d{4},\s*\d{1,2}:\d{2}\b", line):
+                continue
+            if re.search(r"\bpage\s*\d+\s*/\s*\d+\b", line, flags=re.IGNORECASE):
+                continue
+            # Drop isolated file-path lines from PDFs/code listings.
+            if re.fullmatch(
+                r"[\w./-]+\.(?:py|js|ts|tsx|html|css|md|json|yaml|yml|txt)",
+                line,
+                flags=re.IGNORECASE,
+            ):
+                continue
+            # Repair tiny chopped leading fragments such as "re Guide", "g heavy".
+            line = re.sub(r"^[a-z]{1,4}\s+(?=[A-Z])", "", line)
+            cleaned_lines.append(line)
+
+        # Merge wrapped PDF lines to reduce partial sentence fragments.
+        merged: List[str] = []
+        for line in cleaned_lines:
+            if merged and self._should_merge_general_lines(merged[-1], line):
+                merged[-1] = f"{merged[-1]} {line}"
+            else:
+                merged.append(line)
+
+        deduped: List[str] = []
+        seen = set()
+        for line in merged:
+            norm = line.lower()
+            if norm in seen:
+                continue
+            seen.add(norm)
+            deduped.append(line)
+
+        return "\n".join(deduped).strip()
+
+    def _should_merge_general_lines(self, prev: str, curr: str) -> bool:
+        """Heuristic: merge PDF-wrapped lines that belong to one sentence/phrase."""
+        prev = (prev or "").strip()
+        curr = (curr or "").strip()
+        if not prev or not curr:
+            return False
+        if len(prev) > 140:
+            return False
+        if prev.endswith((".", "!", "?", ":", ";")):
+            return False
+        if re.match(r"^\d+[\).\s-]", curr):
+            return False
+        if re.match(r"^(Part|Section|Chapter)\b", curr, flags=re.IGNORECASE):
+            return False
+        if re.match(r"^(Abstract|Conclusion|Introduction)\b", curr, flags=re.IGNORECASE):
+            return False
+        if curr.istitle() and curr.count(" ") <= 2:
+            return False
+        if re.match(r"^[#@]", curr):
+            return False
+        if not re.search(r"[A-Za-z]", prev) or not re.search(r"[A-Za-z]", curr):
+            return False
+        return True
+
+    def _is_summary_candidate(self, seg: str) -> bool:
+        """Filter out low-signal/chopped/code-like snippets for summaries."""
+        seg = (seg or "").strip()
+        if len(seg) < 25:
+            return False
+        low = seg.lower()
+        if "http://" in low or "https://" in low:
+            return False
+        if "@app.route" in low:
+            return False
+        if re.search(r"\bdef\s+\w+\s*\(", low):
+            return False
+        if re.match(r"^(post|get|put|delete|patch)\s+/\S+", low):
+            return False
+        if "mapping every source file" in low:
+            return False
+        if low.endswith("source file in the project:"):
+            return False
+        if seg.endswith(":"):
+            return False
+        # Avoid likely chopped leading fragments and lowercase-start artifacts.
+        if seg and not (seg[0].isupper() or seg[0].isdigit()):
+            return False
+        # Ignore code/file-only snippets.
+        if re.search(r"\b(?:app\.py|model_trainer\.py|llm_pipeline\.py|dashboard\.html)\b", low):
+            return False
+        if re.fullmatch(r"[\w./-]+\.(?:py|js|ts|tsx|html|css|md|json|yaml|yml|txt)", seg, flags=re.IGNORECASE):
+            return False
+        alpha_ratio = sum(ch.isalpha() for ch in seg) / max(len(seg), 1)
+        if alpha_ratio < 0.45:
+            return False
+        return True
+
+    def _clean_summary_point(self, seg: str) -> str:
+        """Normalize a summary point into a clean, sentence-like fragment."""
+        text = re.sub(r"\s+", " ", (seg or "")).strip(" -•\t")
+        text = re.sub(r"\.{2,}", ".", text)
+        text = text.rstrip(" :;,.")
+        # Remove leading section numbering.
+        text = re.sub(r"^\d+(?:\.\d+)*\s+", "", text)
+        return text.strip()
+
+    def _instruction_keywords(self, instruction: str) -> set:
+        """Extract lightweight topical keywords from instruction text."""
+        tokens = set(re.findall(r"\b[a-z][a-z0-9_]{2,}\b", (instruction or "").lower()))
+        return {t for t in tokens if t not in self.GENERAL_STOPWORDS}
 
     def _extract_qa_pairs(self, text: str, domain: str) -> List[Dict[str, str]]:
         """Extract Q&A pairs from text using simple heuristics."""
         pairs = []
 
-        # Clean text first (removes e-commerce noise if present)
-        clean_text = self._clean_ecommerce_text(text)
+        # Clean text first (removes PDF/web noise and artifacts)
+        clean_text = self._clean_general_text(text)
 
         # Extract potential topics from the cleaned text
         topics = self._extract_topics(clean_text)
@@ -629,12 +1207,16 @@ class InstructFormatter:
             return pairs
 
         used_instructions = set()
+        qa_templates = self.QA_TEMPLATES_GENERAL
+        segments = self._split_general_segments(clean_text)
         # Generate Q&A for top topics
         for idx, topic in enumerate(topics[:5]):
             # Find the sentence(s) that discuss this topic
-            sentences = re.split(r"(?<=[.!?])\s+", clean_text)
-            relevant = [s.strip() for s in sentences
-                        if topic.lower() in s.lower() and len(s.strip()) > 20]
+            relevant = [
+                s.strip()
+                for s in segments
+                if topic.lower() in s.lower() and len(s.strip()) > 20
+            ]
 
             if relevant:
                 answer = " ".join(relevant[:2])
@@ -642,22 +1224,43 @@ class InstructFormatter:
                 alpha_ratio = sum(c.isalpha() for c in answer) / max(len(answer), 1)
                 if alpha_ratio < 0.4:
                     continue
-                qa_template = self.QA_TEMPLATES[idx % len(self.QA_TEMPLATES)]
+                # Avoid near-verbatim chunk echo for QA outputs.
+                if len(answer) > int(len(clean_text) * 0.65):
+                    answer = self._create_response(answer, f"Explain {topic} briefly.")
+                qa_template = qa_templates[idx % len(qa_templates)]
                 instruction = qa_template[0].format(topic=topic).strip()
                 normalized_inst = re.sub(r"\s+", " ", instruction.lower())
                 if normalized_inst in used_instructions:
                     continue
                 used_instructions.add(normalized_inst)
-                answer = self._limit_output(self._normalize_ecommerce_output(answer), max_chars=320)
+                answer = self._limit_output(re.sub(r"\s+", " ", answer).strip(), max_chars=260)
+                if len(answer) < 30 or len(answer.split()) < 5:
+                    continue
                 pairs.append(
                     {
                         "instruction": instruction,
-                        "input": "",
+                        "input": clean_text,
                         "output": qa_template[1].format(answer=answer).strip(),
                     }
                 )
 
         return pairs
+
+    def _split_general_segments(self, text: str) -> List[str]:
+        """Split generic prose/PDF text into concise semantic segments."""
+        parts: List[str] = []
+        for line in (text or "").splitlines():
+            line = re.sub(r"\s+", " ", line).strip(" -•\t")
+            if not line:
+                continue
+            # Drop the split on : and ; to preserve natural sentence structure
+            subparts = re.split(r"(?<=[.!?])\s+", line)
+            for part in subparts:
+                seg = re.sub(r"\s+", " ", part).strip(" -•\t")
+                if len(seg) < 12:
+                    continue
+                parts.append(seg)
+        return parts
 
     def _extract_topics(self, text: str) -> List[str]:
         """

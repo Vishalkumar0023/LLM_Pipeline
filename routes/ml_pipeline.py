@@ -408,37 +408,149 @@ def file_manager():
     return render_template("files.html")
 
 
+def _classify_user_file_type(rel_path):
+    rel_lower = rel_path.lower()
+    name_lower = os.path.basename(rel_lower)
+
+    if rel_lower.startswith("llm_exports/"):
+        if name_lower.endswith(".jsonl"):
+            return "LLM Export Data (.jsonl)"
+        if name_lower.endswith(".json"):
+            return "LLM Export Config (.json)"
+        if name_lower.endswith(".py"):
+            return "LLM Export Script (.py)"
+        if name_lower.endswith(".txt"):
+            return "LLM Export Notes (.txt)"
+        return "LLM Export File"
+
+    if name_lower.endswith(".pkl"):
+        return "Model (.pkl)"
+    if name_lower.endswith(".csv"):
+        if "cleaned" in name_lower:
+            return "Cleaned Data (.csv)"
+        if "final" in name_lower:
+            return "Model-Ready Data (.csv)"
+        return "Raw Data (.csv)"
+    if name_lower in {"llm_runs.json", "llm_sessions.json"}:
+        return "LLM Metadata (.json)"
+    if name_lower.endswith(".json"):
+        return "JSON (.json)"
+    if name_lower.endswith(".md"):
+        return "Report (.md)"
+    return "Unknown"
+
+
+def _resolve_user_relative_path(user_folder, relative_path):
+    if not isinstance(relative_path, str):
+        return None
+
+    clean = relative_path.strip().replace("\\", "/")
+    if not clean or clean.startswith("/"):
+        return None
+
+    normalized = os.path.normpath(clean)
+    if normalized in {"", "."} or normalized.startswith(".."):
+        return None
+
+    root = os.path.abspath(user_folder)
+    abs_path = os.path.abspath(os.path.join(root, normalized))
+    try:
+        common = os.path.commonpath([root, abs_path])
+    except ValueError:
+        return None
+    if common != root:
+        return None
+
+    return abs_path, normalized.replace("\\", "/")
+
+
+def _prune_empty_dirs(start_dir, floor_dir):
+    floor_abs = os.path.abspath(floor_dir)
+    current = os.path.abspath(start_dir)
+    while True:
+        try:
+            if not current.startswith(floor_abs):
+                break
+            if not os.path.isdir(current):
+                break
+            if os.listdir(current):
+                break
+            os.rmdir(current)
+            if current == floor_abs:
+                break
+            current = os.path.dirname(current)
+        except Exception:
+            break
+
+
+def _resolve_legacy_filename(user_folder, raw_name):
+    if not isinstance(raw_name, str):
+        return None, "invalid"
+
+    name = raw_name.strip()
+    if not name or "/" in name or "\\" in name:
+        return None, "invalid"
+
+    top_level = os.path.abspath(os.path.join(user_folder, name))
+    if os.path.isfile(top_level):
+        return (top_level, name), None
+
+    matches = []
+    for root, dirs, filenames in os.walk(user_folder):
+        dirs[:] = [d for d in dirs if not d.startswith(".")]
+        for fname in filenames:
+            if fname != name:
+                continue
+            abs_path = os.path.abspath(os.path.join(root, fname))
+            rel = os.path.relpath(abs_path, user_folder).replace("\\", "/")
+            matches.append((abs_path, rel))
+            if len(matches) > 1:
+                return None, "ambiguous"
+
+    if not matches:
+        return None, "not_found"
+    return matches[0], None
+
+
 @ml_bp.route("/api/user_files")
 @jwt_required
 def get_user_files():
     user_folder = get_user_folder(g.current_user.id)
     files = []
+
+    def _append_file(file_path, rel_path):
+        try:
+            stat = os.stat(file_path)
+            rel_norm = rel_path.replace(os.sep, "/")
+            files.append(
+                {
+                    "name": os.path.basename(rel_norm),
+                    "path": rel_norm,
+                    "size": stat.st_size,
+                    "date": datetime.fromtimestamp(stat.st_mtime).isoformat(),
+                    "type": _classify_user_file_type(rel_norm),
+                }
+            )
+        except Exception:
+            pass
+
     if os.path.exists(user_folder):
+        # Top-level user files (legacy behavior).
         for entry in os.scandir(user_folder):
             if entry.is_file() and not entry.name.startswith("."):
-                try:
-                    stat = entry.stat()
-                    file_type = "Unknown"
-                    if entry.name.endswith(".pkl"):
-                        file_type = "Model (.pkl)"
-                    elif entry.name.endswith(".csv"):
-                        if "cleaned" in entry.name:
-                            file_type = "Cleaned Data (.csv)"
-                        elif "final" in entry.name:
-                            file_type = "Model-Ready Data (.csv)"
-                        else:
-                            file_type = "Raw Data (.csv)"
+                _append_file(entry.path, entry.name)
 
-                    files.append(
-                        {
-                            "name": entry.name,
-                            "size": stat.st_size,
-                            "date": datetime.fromtimestamp(stat.st_mtime).isoformat(),
-                            "type": file_type,
-                        }
-                    )
-                except Exception:
-                    pass
+        # Nested LLM export files under user_data/<id>/llm_exports/<session>/*
+        llm_exports_root = os.path.join(user_folder, "llm_exports")
+        if os.path.isdir(llm_exports_root):
+            for root, dirs, filenames in os.walk(llm_exports_root):
+                dirs[:] = [d for d in dirs if not d.startswith(".")]
+                for name in filenames:
+                    if name.startswith("."):
+                        continue
+                    path = os.path.join(root, name)
+                    rel = os.path.relpath(path, user_folder)
+                    _append_file(path, rel)
 
     files.sort(key=lambda x: x["date"], reverse=True)
     return jsonify(files)
@@ -447,27 +559,74 @@ def get_user_files():
 @ml_bp.route("/api/delete_files", methods=["POST"])
 @jwt_required
 def delete_user_files():
-    data = request.json
-    filenames = data.get("filenames", [])
+    data = request.get_json(silent=True) or {}
+    filenames = data.get("filenames", data.get("paths", []))
+    if not isinstance(filenames, list):
+        return jsonify({"deleted": [], "errors": ["Invalid payload: filenames must be a list"]}), 400
+
     user_folder = get_user_folder(g.current_user.id)
+    llm_exports_root = os.path.abspath(os.path.join(user_folder, "llm_exports"))
     deleted, errors = [], []
-    for filename in filenames:
-        if ".." in filename or "/" in filename or "\\" in filename:
+    for raw_path in filenames:
+        resolved = _resolve_user_relative_path(user_folder, raw_path)
+        path, rel_path = None, ""
+        if resolved:
+            path, rel_path = resolved
+            if not os.path.isfile(path):
+                path = None
+        if not path:
+            # Backward compatibility for cached clients that send basename only.
+            legacy_resolved, legacy_err = _resolve_legacy_filename(user_folder, raw_path)
+            if legacy_resolved:
+                path, rel_path = legacy_resolved
+            elif legacy_err == "ambiguous":
+                errors.append(
+                    f"Ambiguous file name '{raw_path}'. Please refresh and delete by full path."
+                )
+                continue
+
+        if not path or not rel_path:
+            if isinstance(raw_path, str) and raw_path.strip():
+                errors.append(f"File not found or invalid path: {raw_path}")
             continue
-        path = os.path.join(user_folder, filename)
+
         try:
-            if os.path.exists(path):
-                os.remove(path)
-                deleted.append(filename)
+            os.remove(path)
+            deleted.append(rel_path)
+            abs_path = os.path.abspath(path)
+            if abs_path.startswith(llm_exports_root + os.sep):
+                _prune_empty_dirs(os.path.dirname(abs_path), llm_exports_root)
         except Exception as e:
-            errors.append(f"Error deleting {filename}: {str(e)}")
+            errors.append(f"Error deleting {rel_path}: {str(e)}")
     return jsonify({"deleted": deleted, "errors": errors})
+
+
+@ml_bp.route("/api/download_user_file")
+@jwt_required
+def download_user_file():
+    user_folder = get_user_folder(g.current_user.id)
+    rel_path = request.args.get("path", "")
+    resolved = _resolve_user_relative_path(user_folder, rel_path)
+    if not resolved:
+        return jsonify({"error": "Invalid file path"}), 400
+
+    abs_path, safe_rel = resolved
+    if not os.path.isfile(abs_path):
+        return jsonify({"error": "File not found"}), 404
+
+    return send_file(abs_path, as_attachment=True, download_name=os.path.basename(safe_rel))
 
 
 @ml_bp.route("/download/<filename>")
 @jwt_required
 def download_file(filename):
     user_folder = get_user_folder(g.current_user.id)
+    # SECURITY: Reject any path traversal attempts
+    if ".." in filename or "/" in filename or "\\" in filename:
+        return jsonify({"error": "Invalid filename"}), 400
+    safe_path = os.path.abspath(os.path.join(user_folder, filename))
+    if not safe_path.startswith(os.path.abspath(user_folder)):
+        return jsonify({"error": "Access denied"}), 403
     return send_from_directory(user_folder, filename, as_attachment=True)
 
 

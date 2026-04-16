@@ -299,10 +299,10 @@ class LLMPipeline:
 
     def generate_with_llm(
         self,
-        provider: str = "openai",
+        provider: Optional[str] = None,
         api_key: Optional[str] = None,
         base_url: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: Optional[str] = None,
     ) -> List[Dict[str, Any]]:
         """
         Alternative to chunk() and format_instructions().
@@ -323,6 +323,10 @@ class LLMPipeline:
             from .llm_data_processor import LLMDataProcessor
         except ImportError:
             raise ImportError("LLM Data Processor modules not found.")
+
+        # Resolve defaults from environment
+        provider = provider or os.environ.get("LLM_PROVIDER", "ollama")
+        model = model or os.environ.get("OLLAMA_MODEL", "deepseek-r1:8b")
 
         client = LLMClient(provider=provider, api_key=api_key, base_url=base_url)
         processor = LLMDataProcessor(client=client, model=model)

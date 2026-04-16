@@ -156,7 +156,17 @@ class BaseExtractor(ABC):
             "Chrome/120.0.0.0 Safari/537.36"
         ),
         "Accept-Language": "en-US,en;q=0.9",
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7",
+        "Accept-Encoding": "gzip, deflate, br",
+        "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+        "sec-ch-ua-mobile": "?0",
+        "sec-ch-ua-platform": '"macOS"',
+        "sec-fetch-dest": "document",
+        "sec-fetch-mode": "navigate",
+        "sec-fetch-site": "none",
+        "sec-fetch-user": "?1",
+        "upgrade-insecure-requests": "1",
+        "Connection": "keep-alive",
     }
 
     def __init__(
@@ -176,6 +186,18 @@ class BaseExtractor(ABC):
     def _fetch_with_requests(self, url: str) -> BeautifulSoup:
         """Fetch page using requests (static HTML only)."""
         response = requests.get(url, headers=self.HEADERS, timeout=self.timeout)
+        # Some e-commerce sites block first-hit requests; try one warmup retry.
+        if response.status_code == 403:
+            parsed = urlparse(url)
+            home = f"{parsed.scheme}://{parsed.netloc}/"
+            retry_headers = dict(self.HEADERS)
+            retry_headers["Referer"] = home
+            retry_headers["sec-fetch-site"] = "same-origin"
+            try:
+                requests.get(home, headers=retry_headers, timeout=self.timeout)
+            except Exception:
+                pass
+            response = requests.get(url, headers=retry_headers, timeout=self.timeout)
         response.raise_for_status()
         return BeautifulSoup(response.text, "lxml")
 
@@ -925,8 +947,18 @@ class BaseListingExtractor(ABC):
         return {
             "User-Agent": random.choice(self.USER_AGENTS),
             "Accept-Language": "en-US,en;q=0.9",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Encoding": "gzip, deflate, br",
             "Referer": "https://www.google.com/",
+            "sec-ch-ua": '"Not_A Brand";v="8", "Chromium";v="120", "Google Chrome";v="120"',
+            "sec-ch-ua-mobile": "?0",
+            "sec-ch-ua-platform": '"macOS"',
+            "sec-fetch-dest": "document",
+            "sec-fetch-mode": "navigate",
+            "sec-fetch-site": "cross-site",
+            "sec-fetch-user": "?1",
+            "upgrade-insecure-requests": "1",
+            "Connection": "keep-alive",
         }
 
     def _human_delay(self):
@@ -942,9 +974,20 @@ class BaseListingExtractor(ABC):
 
     def _fetch_with_requests(self, url: str) -> BeautifulSoup:
         """Fetch page using requests with rotated headers."""
-        response = requests.get(
-            url, headers=self._get_headers(), timeout=self.timeout
-        )
+        headers = self._get_headers()
+        response = requests.get(url, headers=headers, timeout=self.timeout)
+        # Try a warmed retry once for 403 responses (common on listing pages).
+        if response.status_code == 403:
+            parsed = urlparse(url)
+            home = f"{parsed.scheme}://{parsed.netloc}/"
+            retry_headers = self._get_headers()
+            retry_headers["Referer"] = home
+            retry_headers["sec-fetch-site"] = "same-origin"
+            try:
+                requests.get(home, headers=retry_headers, timeout=self.timeout)
+            except Exception:
+                pass
+            response = requests.get(url, headers=retry_headers, timeout=self.timeout)
         response.raise_for_status()
         return BeautifulSoup(response.text, "lxml")
 
@@ -1372,6 +1415,7 @@ class FlipkartListingExtractor(BaseListingExtractor):
                         "a.IRpwTa",
                         "div.KzDlHZ",
                         "a.wjcEIp",
+                        "div.RG5Slk",
                     ],
                 )
                 if not title or len(title) < 5:
@@ -1384,6 +1428,7 @@ class FlipkartListingExtractor(BaseListingExtractor):
                         "div._30jeq3._1_WHN1",
                         "div._30jeq3",
                         "div.Nx9bqj",
+                        "div.hZ3P6w",
                     ],
                 )
                 price = self._normalize_price(price_text)
@@ -1414,6 +1459,7 @@ class FlipkartListingExtractor(BaseListingExtractor):
                     [
                         "div._3LWZlK",
                         "div.XQDdHH",
+                        "div.MKiFS6",
                     ],
                 )
                 rating = self._parse_rating(rating_text)
@@ -1424,13 +1470,14 @@ class FlipkartListingExtractor(BaseListingExtractor):
                     [
                         "span._2_R_DZ",
                         "span.Wphh3N",
+                        "span.PvbNMB",
                     ],
                 )
                 reviews_count = self._parse_count(reviews_text)
 
                 # Product URL
                 product_link = self._select_attr(
-                    card, ["a._1fQZEK", "a.s1Q9rs", "a.IRpwTa", "a._2rpwqI", "a.CGtC98"], "href"
+                    card, ["a._1fQZEK", "a.s1Q9rs", "a.IRpwTa", "a._2rpwqI", "a.CGtC98", "a.k7wcnx"], "href"
                 )
                 product_url = ""
                 if product_link:
@@ -1449,7 +1496,7 @@ class FlipkartListingExtractor(BaseListingExtractor):
 
                 # Description snippet
                 desc_parts = []
-                for sel in ["li.rgWa7D", "ul.G4BRas li", "div._1xgFaf"]:
+                for sel in ["li.rgWa7D", "ul.G4BRas li", "div._1xgFaf", "li.DTBslk"]:
                     items = card.select(sel)
                     for item in items[:5]:
                         t = item.get_text(strip=True)
@@ -1567,7 +1614,7 @@ class EcommerceScraper:
         # Initialize product page extractors
         self._extractors: List[BaseExtractor] = [
             AmazonExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
-            FlipkartExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
+            FlipkartExtractor(use_playwright=True, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
             MeeshoExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
             MyntraExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
             AjioExtractor(use_playwright=use_playwright, timeout=timeout, headless=self.headless, max_pages=self.max_pages),
@@ -1581,7 +1628,7 @@ class EcommerceScraper:
                 headless=self.headless, max_pages=self.max_pages,
             ),
             FlipkartListingExtractor(
-                use_playwright=use_playwright, timeout=timeout,
+                use_playwright=True, timeout=timeout,
                 headless=self.headless, max_pages=self.max_pages,
             ),
         ]

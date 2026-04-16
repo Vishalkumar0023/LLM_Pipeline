@@ -122,7 +122,12 @@ def jwt_required(f):
     def decorated(*args, **kwargs):
         user = get_current_user()
         if not user:
-            if request.is_json or request.headers.get("Authorization"):
+            # API routes should always return JSON auth errors.
+            if (
+                request.path.startswith("/api/")
+                or request.is_json
+                or request.headers.get("Authorization")
+            ):
                 return jsonify(
                     {"error": "Authentication required", "code": "TOKEN_EXPIRED"}
                 ), 401
@@ -137,10 +142,14 @@ def set_auth_cookies(response, user_id):
     access_token = create_access_token(user_id)
     refresh_token = create_refresh_token(user_id)
 
+    # SECURITY: Set secure=True in production to prevent cookie transmission over HTTP
+    is_secure = not current_app.debug
+
     response.set_cookie(
         "access_token",
         access_token,
         httponly=True,
+        secure=is_secure,
         samesite="Lax",
         max_age=int(JWT_ACCESS_EXPIRY.total_seconds()),
         path="/",
@@ -149,6 +158,7 @@ def set_auth_cookies(response, user_id):
         "refresh_token",
         refresh_token,
         httponly=True,
+        secure=is_secure,
         samesite="Lax",
         max_age=int(JWT_REFRESH_EXPIRY.total_seconds()),
         path="/",
@@ -198,7 +208,7 @@ def generate_plots(df, target_col=None):
             plt.tight_layout()
             plots["correlation"] = fig_to_base64(fig)
             plt.close(fig)
-        except:
+        except Exception:
             pass
 
     if numeric_cols:
@@ -226,7 +236,7 @@ def generate_plots(df, target_col=None):
             plt.tight_layout()
             plots["distributions"] = fig_to_base64(fig)
             plt.close(fig)
-        except:
+        except Exception:
             pass
 
     return plots

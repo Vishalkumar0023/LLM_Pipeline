@@ -8,9 +8,12 @@ Parses PDF, URL/HTML, XML, plain text, and Markdown into a unified format.
 import re
 import json
 import hashlib
+import ipaddress
+import socket
 from pathlib import Path
 from typing import List, Dict, Any, Optional, Union
 from datetime import datetime
+from urllib.parse import urlparse
 
 # Optional imports with graceful fallback
 try:
@@ -92,6 +95,35 @@ class DocumentIngestor:
             "by_type": {},
         }
 
+    # ─── SSRF Protection ─────────────────────────────────────────────
+    _BLOCKED_IP_RANGES = [
+        ipaddress.ip_network("127.0.0.0/8"),
+        ipaddress.ip_network("10.0.0.0/8"),
+        ipaddress.ip_network("172.16.0.0/12"),
+        ipaddress.ip_network("192.168.0.0/16"),
+        ipaddress.ip_network("169.254.0.0/16"),  # AWS metadata, link-local
+        ipaddress.ip_network("0.0.0.0/8"),
+        ipaddress.ip_network("::1/128"),
+        ipaddress.ip_network("fc00::/7"),
+        ipaddress.ip_network("fe80::/10"),
+    ]
+
+    @staticmethod
+    def _is_safe_url(url: str) -> bool:
+        """Block requests to private/internal IP ranges to prevent SSRF."""
+        parsed = urlparse(url)
+        hostname = parsed.hostname
+        if not hostname:
+            return False
+        try:
+            for info in socket.getaddrinfo(hostname, None):
+                addr = ipaddress.ip_address(info[4][0])
+                if any(addr in net for net in DocumentIngestor._BLOCKED_IP_RANGES):
+                    return False
+        except (socket.gaierror, ValueError):
+            return False
+        return True
+
     def ingest(
         self, sources: Union[str, List[str]], recursive: bool = False, max_pages: int = 1
     ) -> List[Dict[str, Any]]:
@@ -115,6 +147,7 @@ class DocumentIngestor:
         """
         if isinstance(sources, str):
             sources = [sources]
+        sources = self._normalize_sources(sources or [])
 
         self.documents = []
         self.errors = []
@@ -135,6 +168,44 @@ class DocumentIngestor:
 
         self._stats["total_documents"] = len(self.documents)
         return self.documents
+
+    def _split_concatenated_urls(self, source: str) -> List[str]:
+        text = (source or "").strip()
+        if not text:
+            return []
+        starts = [m.start() for m in re.finditer(r"https?://", text, flags=re.IGNORECASE)]
+        if len(starts) <= 1:
+            return [text]
+        parts: List[str] = []
+        for i, start in enumerate(starts):
+            end = starts[i + 1] if i + 1 < len(starts) else len(text)
+            part = text[start:end].strip()
+            if part:
+                parts.append(part)
+        return parts
+
+    def _normalize_sources(self, sources: List[str]) -> List[str]:
+        """Split malformed concatenated URLs and dedupe sources while preserving order."""
+        normalized: List[str] = []
+        seen = set()
+
+        for source in sources:
+            if not isinstance(source, str):
+                continue
+            chunks = self._split_concatenated_urls(source)
+            for chunk in chunks:
+                value = (chunk or "").strip()
+                if not value:
+                    continue
+                if value.startswith(("http://", "https://")):
+                    parsed = urlparse(value)
+                    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+                        continue
+                if value in seen:
+                    continue
+                seen.add(value)
+                normalized.append(value)
+        return normalized
 
     def _ingest_single(
         self, source: str, recursive: bool = False, max_pages: int = 1
@@ -243,14 +314,33 @@ class DocumentIngestor:
                 "Install with: pip install requests beautifulsoup4"
             )
 
+        # SECURITY: Block requests to private/internal IP ranges (SSRF protection)
+        if not self._is_safe_url(url):
+            raise ValueError(
+                f"URL blocked: requests to internal/private network addresses "
+                f"are not allowed: {url}"
+            )
+
         response = requests.get(
             url,
             timeout=self.timeout,
             headers={"User-Agent": "DataPipeline-Ingestor/1.0"},
+            stream=True,
         )
         response.raise_for_status()
 
-        soup = BeautifulSoup(response.text, "html.parser")
+        # SECURITY: Enforce maximum response size to prevent resource exhaustion
+        max_size = 10 * 1024 * 1024  # 10 MB
+        content_length = int(response.headers.get("content-length", 0))
+        if content_length > max_size:
+            raise ValueError(
+                f"Response too large ({content_length} bytes). "
+                f"Maximum allowed: {max_size} bytes."
+            )
+        content = response.content[:max_size]
+        html_text = content.decode("utf-8", errors="replace")
+
+        soup = BeautifulSoup(html_text, "html.parser")
 
         # Remove script, style, nav, footer, header elements
         for tag in soup.find_all(

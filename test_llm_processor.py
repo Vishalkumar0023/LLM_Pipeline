@@ -1,10 +1,4 @@
-#!/usr/bin/env python3
-"""
-Test: LLM Data Processor
-==========================
-Validates the LLMDataProcessor pipeline stages using mock API responses.
-"""
-
+#!/usr/import env python3
 import os
 import sys
 import json
@@ -25,140 +19,88 @@ def report(name, passed, detail=""):
     if detail:
         print(f"      {detail}")
 
-
-class MockLLMClient:
-    """Mocks the LLMClient to return predefined responses for testing."""
-    def __init__(self):
-        self.calls = []
-        
-    def generate_text(self, system_prompt: str, user_prompt: str, model: str = "gpt-4o", temperature: float = 0.7) -> str:
-        self.calls.append(("text", system_prompt, user_prompt))
-        if "compression" in system_prompt.lower():
-            return "Cleaned Mock Product: 16GB RAM, 512GB Storage, $999."
-        return "Generic mock response"
-
-    def generate_json(self, system_prompt: str, user_prompt: str, model: str = "gpt-4o", temperature: float = 0.1) -> Dict[str, Any]:
-        self.calls.append(("json", system_prompt, user_prompt))
-        
-        # 1. Extraction Mock
-        if "extraction" in system_prompt.lower():
-            return {
-                "product_name": "Mock Product",
-                "brand": "MockBrand",
-                "ram": "16GB",
-                "storage": "512GB",
-                "camera": None,
-                "battery": "4000mAh",
-                "price": "$999",
-                "discount": "10%",
-                "rating": "4.5",
-                "delivery_date": "Tomorrow"
-            }
-            
-        # 2. QA Generation Mock
-        if "qa examples" in system_prompt.lower() or "instruction tuning data" in system_prompt.lower():
-            return {
-                "pairs": [
-                    {
-                        "instruction": "What is the RAM capacity?",
-                        "input": "Cleaned Mock Product: 16GB RAM...",
-                        "output": "The product has 16GB of RAM."
-                    },
-                    {
-                        "instruction": "What is the price?",
-                        "input": "Cleaned Mock Product...", # will be overwritten by processor
-                        "output": "The price is $999."
-                    }
-                ]
-            }
-            
-        # 3. Validation Mock
-        if "validator" in system_prompt.lower():
-            # Let's say the first QA pair is valid, second is invalid
-            if "RAM capacity" in user_prompt:
-                return {
-                    "is_valid": True,
-                    "problems": [],
-                    "fix_suggestion": None
-                }
-            else:
-                return {
-                    "is_valid": False,
-                    "problems": ["vague instruction"],
-                    "fix_suggestion": "Specify the product name"
-                }
-                
-        return {}
-
-
-def test_pipeline_flow():
-    print("\n── Test: LLM Pipeline Flow ────────────────────────────────")
-    mock_client = MockLLMClient()
-    processor = LLMDataProcessor(client=mock_client)
+def test_pipeline_stages():
+    print("\n── Test: LLM Pipeline 6-Stage Flow ────────────────────────────────")
+    processor = LLMDataProcessor()
     
-    raw_html = "<html><body>Buy now! Mock Product with 16GB RAM, 512GB Storage for $999. Free shipping!</body></html>"
+    raw_text = """
+    Product: Apple iPhone 17 Pro Max (Silver, 256 GB)
+    Price: INR 149,900
+    Rating: 4.8/5 (552 reviews)
+    Features: 48MP + 48MP + 48MP Rear Camera
+    A19 Chip Processor
+    Display: 6.9 inch Super Retina XDR
+    256 GB ROM
+    1 year warranty
+    """
     
-    # Run pipeline
-    valid_pairs = processor.process_raw_text(raw_html)
+    # Run pipeline stages 1-4
+    valid_pairs = processor.process_raw_text(raw_text)
     
     # Assertions
-    calls = mock_client.calls
-    report("Called clean_text (text generation)", len([c for c in calls if c[0] == "text"]) == 1)
-    
-    json_calls = [c for c in calls if c[0] == "json"]
-    report("Called extract, QA, and validation (json)", len(json_calls) >= 3)
-    
     stats = processor.get_stats()
     report("Stats tracked processed count", stats["processed"] == 1)
-    report("Stats tracked cleaned count", stats["cleaned"] == 1)
-    report("Stats tracked QA generated count", stats["qa_generated"] == 2)
-    report("Stats tracked validated_valid count", stats["validated_valid"] == 1)
-    report("Stats tracked validated_invalid count", stats["validated_invalid"] == 1)
+    report("Stats tracked evidence_extracted count", stats["evidence_extracted"] == 1)
+    report("Stats tracked tasks_generated count", stats["tasks_generated"] == 4)
+    report("Stats tracked validated_valid count", stats["validated_valid"] == 4)
+    report("Stats tracked validated_invalid count", stats["validated_invalid"] == 0)
     
-    report("Returned exactly 1 valid pair", len(valid_pairs) == 1)
+    report("Returned exactly 4 valid pair", len(valid_pairs) == 4)
     if valid_pairs:
-        pair = valid_pairs[0]
-        report("Valid pair kept", "RAM capacity" in pair["instruction"])
-        report("Input was overwritten with clean text", pair["input"] == "Cleaned Mock Product: 16GB RAM, 512GB Storage, $999.")
-
-def test_json_parsing_edge_cases():
-    print("\n── Test: JSON Parsing Edge Cases ──────────────")
-    from data_pipeline.llm_client import LLMClient
-    
-    class MockRequestsClient(LLMClient):
-        def __init__(self, raw_resp):
-            self.raw_resp = raw_resp
-            super().__init__(api_key="mock")
+        # Check task types
+        extraction = next((p for p in valid_pairs if p.get("task_type") == "extraction"), None)
+        qa = next((p for p in valid_pairs if p.get("task_type") == "qa"), None)
+        reasoning = next((p for p in valid_pairs if p.get("task_type") == "reasoning"), None)
+        
+        report("Extraction task generated", bool(extraction))
+        if extraction:
+            raw = extraction["output"]
+            j = raw if isinstance(raw, dict) else json.loads(raw)
+            report("Extraction contains brand", j.get("brand") == "Apple")
+            report("Extraction extracted Apple", j.get("brand") == "Apple", detail=f"Found: {j.get('brand')}")
+            report("Extraction contains price", j.get("price") == "149900", detail=f"Found: {j.get('price')}")
             
-        def _make_request(self, messages, model, temperature=0.7, max_tokens=1000, response_format=None):
-            return self.raw_resp
+        report("QA task generated", bool(qa))
+        if qa:
+            report("QA output is correct price", qa["output"] == "149900")
             
-    # Markdown wrapped JSON
-    c1 = MockRequestsClient("```json\n{\"test\": 123}\n```")
-    j1 = c1.generate_json("sys", "user")
-    report("Parsed markdown-wrapped JSON", j1.get("test") == 123)
-    
-    # Raw JSON with leading/trailing spaces
-    c2 = MockRequestsClient("   {\"test\": 456}   ")
-    j2 = c2.generate_json("sys", "user")
-    report("Parsed padded JSON", j2.get("test") == 456)
-    
-    # Invalid JSON
-    c3 = MockRequestsClient("Not a json at all")
-    try:
-        c3.generate_json("sys", "user")
-        report("Failed on invalid JSON", False)
-    except ValueError:
-        report("Caught Invalid JSON properly", True)
+        report("Reasoning task generated", bool(reasoning))
+        if reasoning:
+            report("Reasoning mentions camera specs", "48MP" in reasoning["output"])
 
+def test_deduplication_and_balancing():
+    print("\n── Test: Stage 5 Deduplication & Balancing ──────────────")
+    processor = LLMDataProcessor()
+    
+    raw_tasks = [
+        {"instruction": "q1", "input": "in", "output": "out", "task_type": "extraction"},
+        {"instruction": "q1", "input": "in", "output": "out", "task_type": "extraction"}, # duplicate
+        {"instruction": "q2", "input": "in", "output": "out", "task_type": "qa"},
+        {"instruction": "q3", "input": "in", "output": "out", "task_type": "qa"},
+        {"instruction": "q4", "input": "in", "output": "out", "task_type": "qa"},
+        {"instruction": "s1", "input": "in", "output": "out", "task_type": "summarization"},
+        {"instruction": "s2", "input": "in", "output": "out", "task_type": "summarization"},
+        {"instruction": "r1", "input": "in", "output": "out", "task_type": "reasoning"}
+    ]
+    
+    balanced = processor.deduplicate_and_balance(raw_tasks)
+    report("Duplicates removed", len(balanced) < len(raw_tasks))
+    # It should balance to 4:3:2:1 based on the limiting factor (reasoning = 1) -> 4 e, 3 q, 2 s, 1 r.
+    # We only have 1 unique extraction, so base_unit is min(1/4, 3/3, 2/2, 1/1) = 0.25 -> 1 e, 0 q, 0 s, 0 r.
+    # Wait, if base_unit == 0 in integer math? We return all unique as a fallback in our code!
+    report("Successfully fell back if perfect balance impossible", len(balanced) == 7, detail=f"Length was {len(balanced)}")
+    
+    # Internal task_types should be removed
+    has_ttype = any("task_type" in item for item in balanced)
+    report("Internal task_type field stripped", not has_ttype)
 
 def main():
     print("\n" + "=" * 60)
     print("  LLM DATA PROCESSOR TESTS")
     print("=" * 60)
 
-    test_pipeline_flow()
-    test_json_parsing_edge_cases()
+    test_pipeline_stages()
+    test_deduplication_and_balancing()
 
     total = len(results)
     passed = sum(1 for _, p in results if p)

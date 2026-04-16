@@ -23,12 +23,15 @@ app = FastAPI(
     version="1.0.0",
 )
 
-# Enable CORS
+# Enable CORS — restrict to known origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=[
+        os.environ.get("FRONTEND_ORIGIN", "http://127.0.0.1:8080"),
+    ],
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type", "Authorization", "X-API-Key"],
+    allow_credentials=True,
 )
 
 # Database Connection (Reuse existing SQLite DB)
@@ -105,11 +108,31 @@ def health_check():
     return {"status": "ok", "service": "ML Microservice"}
 
 
+# SECURITY: Simple API key auth for the ML microservice
+ML_API_KEY = os.environ.get("ML_API_KEY", "")
+
+
+def _verify_api_key(request):
+    """Verify the API key from the X-API-Key header."""
+    if not ML_API_KEY:
+        # If no key is configured, reject all requests in production
+        logger.warning("ML_API_KEY not configured — rejecting request")
+        raise HTTPException(status_code=503, detail="ML service not configured")
+    key = request.headers.get("X-API-Key", "")
+    if key != ML_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+
+from fastapi import Request
+
+
 @app.post("/train/{dataset_id}", response_model=TrainResponse)
 def train_model(
+    request: Request,
     dataset_id: int = Path(..., title="The ID of the dataset to train"),
     config: TrainRequest = None,
 ):
+    _verify_api_key(request)
     """
     Train an ML model on the specified dataset.
     This runs in a thread pool (blocking safe) and returns the results.
@@ -140,7 +163,6 @@ def train_model(
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         logger.error(f"Training failed: {e}")
-        raise HTTPException(status_code=500, detail="Internal ML training error")
         raise HTTPException(status_code=500, detail="Internal ML training error")
 
     duration = time.time() - start_time

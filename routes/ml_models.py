@@ -12,6 +12,22 @@ from utils import jwt_required, get_user_folder, _load_data_libs, _load_pipeline
 ml_models_bp = Blueprint("ml_models", __name__)
 
 
+def _safe_model_load(model_path: str, user_folder: str):
+    """
+    SECURITY: Load model with path validation to prevent loading
+    attacker-controlled pickle files from arbitrary filesystem paths.
+    """
+    import joblib
+
+    abs_path = os.path.abspath(model_path)
+    abs_folder = os.path.abspath(user_folder)
+    if not abs_path.startswith(abs_folder):
+        raise ValueError("Model path outside user directory — access denied")
+    if not os.path.exists(abs_path):
+        raise FileNotFoundError(f"Model file not found: {abs_path}")
+    return joblib.load(abs_path)
+
+
 @ml_models_bp.route("/dataset/<int:dataset_id>/transform", methods=["POST"])
 @jwt_required
 def transform_dataset(dataset_id):
@@ -59,7 +75,7 @@ def transform_dataset(dataset_id):
 
         try:
             log = json.loads(dataset.processing_log) if dataset.processing_log else {}
-        except:
+        except Exception:
             log = {}
 
         if "cleaning" not in log:
@@ -191,7 +207,7 @@ def train_model(dataset_id):
             dummy.generate_html_report(
                 os.path.join(user_folder, f"model_report_{dataset_id}.html")
             )
-        except:
+        except Exception:
             pass
 
         return jsonify({"success": True, "results": results})
@@ -212,9 +228,8 @@ def get_user_model_info(dataset_id):
         return jsonify({"error": "Model not found"}), 404
 
     try:
-        import joblib
-
-        model_data = joblib.load(dataset.model_path)
+        user_folder = get_user_folder(g.current_user.id)
+        model_data = _safe_model_load(dataset.model_path, user_folder)
         return jsonify(
             {
                 "success": True,
@@ -226,7 +241,9 @@ def get_user_model_info(dataset_id):
             }
         )
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        import logging
+        logging.getLogger(__name__).exception("Failed to load model info")
+        return jsonify({"error": "Failed to load model"}), 500
 
 
 @ml_models_bp.route("/api/predict_user_model", methods=["POST"])
@@ -246,9 +263,8 @@ def predict_user_model():
         if not dataset.model_path or not os.path.exists(dataset.model_path):
             return jsonify({"error": "Model not found"}), 404
 
-        import joblib
-
-        model_data = joblib.load(dataset.model_path)
+        user_folder = get_user_folder(g.current_user.id)
+        model_data = _safe_model_load(dataset.model_path, user_folder)
         model = model_data.get("model")
         scaler = model_data.get("scaler")
         feature_names = model_data.get("feature_names", [])
@@ -271,9 +287,10 @@ def predict_user_model():
         )
     except Exception as e:
         import traceback
-
+        import logging
+        logging.getLogger(__name__).exception("Prediction failed")
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "Prediction failed"}), 500
 
 
 DEMO_MODELS_DIR = "demo_models"
@@ -289,7 +306,7 @@ def load_demo_model(model_type):
         import joblib
 
         return joblib.load(path)
-    except:
+    except Exception:
         return None
 
 
@@ -413,7 +430,7 @@ def evolve_features(dataset_id):
 
         try:
             log = json.loads(dataset.processing_log)
-        except:
+        except Exception:
             log = {}
         log["feature_engineering"] = engineer.get_summary()["transformations"]
         dataset.processing_log = json.dumps(log)

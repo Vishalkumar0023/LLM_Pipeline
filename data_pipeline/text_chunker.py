@@ -207,7 +207,9 @@ class TextChunker:
         return chunks
 
     def _chunk_sliding_window(self, text: str) -> List[str]:
-        """Fixed-size sliding window with overlap."""
+        """Fixed-size sliding window with overlap.
+        Prefers sentence boundaries to prevent splitting semantic context.
+        """
         if len(text) <= self.chunk_size:
             return [text]
 
@@ -219,11 +221,19 @@ class TextChunker:
             end = start + self.chunk_size
             chunk = text[start:end]
 
-            # Try to break at word boundary
+            # Prefer sentence boundary (". ", "! ", "? ") over word boundary
             if end < len(text):
-                last_space = chunk.rfind(" ")
-                if last_space > self.chunk_size * 0.5:
-                    chunk = chunk[:last_space]
+                last_sentence = max(
+                    chunk.rfind(". "),
+                    chunk.rfind("! "),
+                    chunk.rfind("? "),
+                )
+                if last_sentence > self.chunk_size * 0.3:
+                    chunk = chunk[: last_sentence + 1]
+                else:
+                    last_space = chunk.rfind(" ")
+                    if last_space > self.chunk_size * 0.5:
+                        chunk = chunk[:last_space]
 
             if chunk.strip():
                 chunks.append(chunk.strip())

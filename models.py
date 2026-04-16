@@ -13,6 +13,9 @@ class User(db.Model):
 
     # Relationship with datasets
     datasets = db.relationship("Dataset", backref="owner", lazy=True)
+    llm_runs = db.relationship(
+        "LLMRun", backref="owner", lazy=True, cascade="all, delete-orphan"
+    )
 
     def set_password(self, password):
         from werkzeug.security import generate_password_hash
@@ -50,3 +53,23 @@ class Dataset(db.Model):
     model_results = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.now)
     user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False)
+
+
+class LLMRun(db.Model):
+    """Model to store per-user LLM export runs for DB-backed management."""
+
+    id = db.Column(db.Integer, primary_key=True)
+    run_id = db.Column(db.String(120), nullable=False, index=True)
+    session_id = db.Column(db.String(64), nullable=False, index=True)
+    sample_count = db.Column(db.Integer, default=0)
+    avg_quality = db.Column(db.Float, default=0.0)
+    template = db.Column(db.String(50))
+    model = db.Column(db.String(255))
+    method = db.Column(db.String(50))
+    version = db.Column(db.String(120))
+    created_at = db.Column(db.DateTime, default=datetime.now, index=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("user.id"), nullable=False, index=True)
+
+    __table_args__ = (
+        db.UniqueConstraint("user_id", "run_id", name="uq_user_llm_run"),
+    )
